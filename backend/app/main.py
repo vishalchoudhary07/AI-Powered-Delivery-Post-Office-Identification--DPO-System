@@ -1,214 +1,298 @@
-from sqlalchemy import distinct
-from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import FastAPI, Depends, HTTPException, Request
-from typing import List
-from geopy.distance import great_circle
-
-# --- CORS MIDDLEWARE ---
+from fastapi import FastAPI, Depends, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-
-# --- RATE LIMITING ---
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from fastapi.exceptions import RequestValidationError
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
+from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+import logging
+from typing import Optional
 
-from . import crud, db_models, schemas
-from .database import get_db
-from .ai_search import SearchService
+from app.database import get_db
+from app import crud, models
+from app.logging_config import setup_logging
+from app.middleware import log_requests
+from app.exceptions import (
+    PostOfficeNotFoundException,
+    InvalidPincodeException,
+    DatabaseConnectionException,
+    RateLimitExceededException,
+    AISearchException
+)
+from app.exception_handlers import (
+    post_office_not_found_handler,
+    invalid_pincode_handler,
+    database_exception_handler,
+    rate_limit_handler,
+    ai_search_handler,
+    validation_exception_handler,
+    sqlalchemy_exception_handler,
+    general_exception_handler
+)
 
-# Initialize search service
-search_service = SearchService()
+# ========================================
+# SETUP LOGGING FIRST
+# ========================================
+logger = setup_logging()
 
-# Initialize rate limiter
+# ========================================
+# CREATE FASTAPI APP
+# ========================================
+app = FastAPI(
+    title="DPO System API",
+    description="AI-Powered Delivery Post Office Identification System",
+    version="1.0.0"
+)
+
+# ========================================
+# SETUP RATE LIMITER
+# ========================================
 limiter = Limiter(key_func=get_remote_address)
-
-app = FastAPI(title="AI-Powered Delivery Post Identification System API")
-
-# Add rate limiter to app
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# --- CORS CONFIGURATION ---
-origins = [
-    "http://localhost:3000",  # React frontend
-    "http://localhost:3001",  # Backup port
-]
+# ========================================
+# ADD MIDDLEWARE
+# ========================================
+# Request logging middleware
+app.middleware("http")(log_requests)
 
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["http://localhost:3000", "http://localhost:5173"],  # Your frontend URLs
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-# --- END OF CORS CONFIGURATION ---
 
+# ========================================
+# REGISTER EXCEPTION HANDLERS
+# ========================================
+app.add_exception_handler(PostOfficeNotFoundException, post_office_not_found_handler)
+app.add_exception_handler(InvalidPincodeException, invalid_pincode_handler)
+app.add_exception_handler(DatabaseConnectionException, database_exception_handler)
+app.add_exception_handler(RateLimitExceededException, rate_limit_handler)
+app.add_exception_handler(AISearchException, ai_search_handler)
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(SQLAlchemyError, sqlalchemy_exception_handler)
+app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
+app.add_exception_handler(Exception, general_exception_handler)
+
+# ========================================
+# STARTUP & SHUTDOWN EVENTS
+# ========================================
+@app.on_event("startup")
+async def startup_event():
+    logger.info("🚀 DPO System API starting up...")
+    logger.info("📊 Rate limiting: Enabled")
+    logger.info("🔒 CORS: Configured")
+    logger.info("📝 Logging: Active")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    logger.info("🛑 DPO System API shutting down...")
+
+# ========================================
+# API ENDPOINTS
+# ========================================
 
 @app.get("/")
-async def read_root():
-    return {"message": "Welcome to the Delivery Post Identification API!"}
+async def root():
+    """Root endpoint - Health check"""
+    logger.info("Health check endpoint called")
+    return {
+        "message": "DPO System API is running",
+        "version": "1.0.0",
+        "status": "healthy"
+    }
 
-
-@app.get("/posts/", response_model=List[schemas.DeliveryPost])
-@limiter.limit("100/minute")
+@app.get("/posts")
+@limiter.limit("100/minute")  # Simple listing - high limit
 async def read_posts(
     request: Request,
-    skip: int = 0, 
-    limit: int = 100, 
+    skip: int = 0,
+    limit: int = Query(default=100, le=1000),
     db: AsyncSession = Depends(get_db)
 ):
-    posts = await crud.get_posts(db, skip=skip, limit=limit)
-    return posts
+    """Get all post offices with pagination"""
+    try:
+        logger.info(f"Fetching posts - skip: {skip}, limit: {limit}")
+        posts = await crud.get_posts(db, skip=skip, limit=limit)
+        logger.info(f"Successfully fetched {len(posts)} posts")
+        return posts
+    except SQLAlchemyError as e:
+        logger.error(f"Database error in read_posts: {str(e)}")
+        raise DatabaseConnectionException("Failed to fetch posts from database")
+    except Exception as e:
+        logger.error(f"Unexpected error in read_posts: {str(e)}", exc_info=True)
+        raise
 
-
-@app.get("/posts/nearby/", response_model=List[schemas.DeliveryPost])
-@limiter.limit("60/minute")
-async def read_nearby_posts(
+@app.get("/posts/pincode/{pincode}")
+@limiter.limit("100/minute")
+async def get_post_by_pincode(
     request: Request,
-    lat: float, 
-    lon: float, 
-    max_distance_km: int = 5, 
+    pincode: str,
     db: AsyncSession = Depends(get_db)
 ):
-    posts = await crud.get_nearest_posts(db, lat=lat, lon=lon, max_distance_km=max_distance_km)
-    return posts
+    """Get post office by pincode"""
+    try:
+        # Validate pincode format
+        if not pincode.isdigit() or len(pincode) != 6:
+            logger.warning(f"Invalid pincode format: {pincode}")
+            raise InvalidPincodeException(pincode)
+        
+        logger.info(f"Searching for pincode: {pincode}")
+        post = await crud.get_post_by_pincode(db, pincode=pincode)
+        
+        if post is None:
+            logger.warning(f"Pincode not found: {pincode}")
+            raise PostOfficeNotFoundException(pincode)
+        
+        logger.info(f"Found post office for pincode: {pincode}")
+        return post
+        
+    except (InvalidPincodeException, PostOfficeNotFoundException):
+        raise
+    except SQLAlchemyError as e:
+        logger.error(f"Database error in get_post_by_pincode: {str(e)}")
+        raise DatabaseConnectionException("Failed to query database")
+    except Exception as e:
+        logger.error(f"Unexpected error in get_post_by_pincode: {str(e)}", exc_info=True)
+        raise
 
-
-@app.get("/posts/search/", response_model=List[schemas.DeliveryPost])
-@limiter.limit("30/minute")
+@app.get("/posts/search")
+@limiter.limit("30/minute")  # AI search - lower limit (expensive)
 async def search_posts(
     request: Request,
-    q: str, 
+    q: str = Query(..., description="Search query"),
+    limit: int = Query(default=10, le=50),
     db: AsyncSession = Depends(get_db)
 ):
-    if not q.strip():
-        raise HTTPException(status_code=400, detail="Search query cannot be empty.")
-    
-    post_ids = search_service.find_similar(query=q)
-    if not post_ids:
-        return []
-    
-    results = await crud.get_posts_by_ids(db, ids=post_ids)
-    id_to_result_map = {result.id: result for result in results}
-    sorted_results = [id_to_result_map[id] for id in post_ids if id in id_to_result_map]
-    return sorted_results
+    """AI-powered semantic search for post offices"""
+    try:
+        logger.info(f"AI search query: '{q}' with limit: {limit}")
+        
+        # Import AI search here to handle errors
+        try:
+            from app.ai_search import search_posts_by_query
+        except ImportError as e:
+            logger.error(f"Failed to import AI search module: {str(e)}")
+            raise AISearchException("AI search service is currently unavailable")
+        
+        results = await search_posts_by_query(db, query=q, limit=limit)
+        
+        logger.info(f"AI search completed - found {len(results)} results for query: '{q}'")
+        return results
+        
+    except AISearchException:
+        raise
+    except SQLAlchemyError as e:
+        logger.error(f"Database error in search_posts: {str(e)}")
+        raise DatabaseConnectionException("Failed to perform search")
+    except Exception as e:
+        logger.error(f"Unexpected error in search_posts: {str(e)}", exc_info=True)
+        raise AISearchException(f"Search failed: {str(e)}")
 
-
-@app.get("/posts/hybrid-search/", response_model=List[schemas.HybridSearchResult])
-@limiter.limit("30/minute")
-async def search_posts_hybrid(
+@app.get("/posts/hybrid-search")
+@limiter.limit("60/minute")  # Geospatial - moderate limit
+async def hybrid_search(
     request: Request,
-    q: str, 
-    lat: float, 
-    lon: float, 
+    q: str = Query(..., description="Search query"),
+    lat: float = Query(..., description="Latitude"),
+    lon: float = Query(..., description="Longitude"),
+    radius_km: float = Query(default=50, description="Search radius in kilometers"),
+    limit: int = Query(default=10, le=50),
     db: AsyncSession = Depends(get_db)
 ):
-    if not q.strip():
-        raise HTTPException(status_code=400, detail="Search query cannot be empty.")
-
-    # 1. Get candidate IDs from AI search
-    candidate_ids = search_service.find_similar(query=q, top_k=100)
-    if not candidate_ids:
-        return []
-
-    # 2. Fetch the full post objects from the database
-    candidates = await crud.get_posts_by_ids(db, ids=candidate_ids)
-    user_location = (lat, lon)
-    
-    ranked_results = []
-    for post in candidates:
-        if post.latitude and post.longitude:
-            post_location = (post.latitude, post.longitude)
-            distance = great_circle(user_location, post_location).kilometers
-
-            # Calculate hybrid score
-            distance_score = 1 / (distance + 1)
-            try:
-                text_rank = candidate_ids.index(post.id)
-                text_score = 1 / (text_rank + 1)
-            except ValueError:
-                text_score = 0
-            hybrid_score = text_score * distance_score
-
-            ranked_results.append({
-                "post": post,
-                "score": hybrid_score,
-                "distance": distance
-            })
-
-    ranked_results.sort(key=lambda x: x["score"], reverse=True)
-
-    # 3. Format the final result to match the HybridSearchResult schema
-    final_results = []
-    for item in ranked_results[:15]:
-        post_data = item["post"]
-        result_with_distance = schemas.HybridSearchResult(
-            **post_data.__dict__,
-            distance_km=item["distance"]
+    """Hybrid search combining AI semantic search and geospatial filtering"""
+    try:
+        logger.info(
+            f"Hybrid search - query: '{q}', lat: {lat}, lon: {lon}, "
+            f"radius: {radius_km}km, limit: {limit}"
         )
-        final_results.append(result_with_distance)
+        
+        # Import AI search
+        try:
+            from app.ai_search import hybrid_search_posts
+        except ImportError as e:
+            logger.error(f"Failed to import AI search module: {str(e)}")
+            raise AISearchException("Hybrid search service is currently unavailable")
+        
+        results = await hybrid_search_posts(
+            db=db,
+            query=q,
+            user_lat=lat,
+            user_lon=lon,
+            radius_km=radius_km,
+            limit=limit
+        )
+        
+        logger.info(f"Hybrid search completed - found {len(results)} results")
+        return results
+        
+    except AISearchException:
+        raise
+    except SQLAlchemyError as e:
+        logger.error(f"Database error in hybrid_search: {str(e)}")
+        raise DatabaseConnectionException("Failed to perform hybrid search")
+    except Exception as e:
+        logger.error(f"Unexpected error in hybrid_search: {str(e)}", exc_info=True)
+        raise AISearchException(f"Hybrid search failed: {str(e)}")
 
-    return final_results
+@app.get("/posts/nearby")
+@limiter.limit("60/minute")  # Geospatial query
+async def get_nearby_posts(
+    request: Request,
+    lat: float = Query(..., description="Latitude"),
+    lon: float = Query(..., description="Longitude"),
+    radius_km: float = Query(default=10, description="Search radius in kilometers"),
+    limit: int = Query(default=20, le=100),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get post offices within a radius from coordinates"""
+    try:
+        logger.info(
+            f"Nearby search - lat: {lat}, lon: {lon}, "
+            f"radius: {radius_km}km, limit: {limit}"
+        )
+        
+        posts = await crud.get_posts_within_radius(
+            db=db,
+            lat=lat,
+            lon=lon,
+            radius_km=radius_km,
+            limit=limit
+        )
+        
+        logger.info(f"Found {len(posts)} posts within {radius_km}km radius")
+        return posts
+        
+    except SQLAlchemyError as e:
+        logger.error(f"Database error in get_nearby_posts: {str(e)}")
+        raise DatabaseConnectionException("Failed to query nearby posts")
+    except Exception as e:
+        logger.error(f"Unexpected error in get_nearby_posts: {str(e)}", exc_info=True)
+        raise
 
-
-@app.get("/locations/states/", response_model=List[str])
-@limiter.limit("100/minute")
-async def get_all_states(
+# ========================================
+# STATS & MONITORING ENDPOINTS
+# ========================================
+@app.get("/stats")
+@limiter.limit("20/minute")
+async def get_stats(
     request: Request,
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Returns a sorted list of all unique states in the database.
-    """
-    from sqlalchemy import select
-    
-    result = await db.execute(
-        select(db_models.DeliveryPost.state_name)
-        .distinct()
-        .order_by(db_models.DeliveryPost.state_name)
-    )
-    states = result.scalars().all()
-    return [state for state in states if state is not None]
-
-
-@app.get("/locations/districts/", response_model=List[str])
-@limiter.limit("100/minute")
-async def get_districts_for_state(
-    request: Request,
-    state: str, 
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Returns a sorted list of unique districts for a given state.
-    """
-    from sqlalchemy import select
-    
-    result = await db.execute(
-        select(db_models.DeliveryPost.district)
-        .where(db_models.DeliveryPost.state_name == state)
-        .distinct()
-        .order_by(db_models.DeliveryPost.district)
-    )
-    districts = result.scalars().all()
-    return [district for district in districts if district is not None]
-
-
-@app.get("/locations/posts/", response_model=List[schemas.DeliveryPost])
-@limiter.limit("100/minute")
-async def get_posts_for_district(
-    request: Request,
-    district: str, 
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Returns a sorted list of all post offices for a given district.
-    """
-    from sqlalchemy import select
-    
-    result = await db.execute(
-        select(db_models.DeliveryPost)
-        .where(db_models.DeliveryPost.district == district)
-        .order_by(db_models.DeliveryPost.office_name)
-    )
-    posts = result.scalars().all()
-    return posts
+    """Get database statistics"""
+    try:
+        logger.info("Fetching database statistics")
+        stats = await crud.get_database_stats(db)
+        logger.info("Successfully fetched database statistics")
+        return stats
+    except SQLAlchemyError as e:
+        logger.error(f"Database error in get_stats: {str(e)}")
+        raise DatabaseConnectionException("Failed to fetch statistics")
+    except Exception as e:
+        logger.error(f"Unexpected error in get_stats: {str(e)}", exc_info=True)
+        raise
