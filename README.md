@@ -299,18 +299,6 @@ npm run lint
 | longitude       | Double      | Longitude coordinate                 |
 | location        | Geography   | PostGIS POINT (for spatial queries)  |
 
-## 🚧 Roadmap
-
-- [ ] Add user authentication
-- [ ] Implement caching with Redis
-- [ ] Add API rate limiting
-- [ ] Create Docker setup
-- [ ] Add unit and integration tests
-- [ ] Implement CI/CD pipeline
-- [ ] Add admin dashboard
-- [ ] Support for more search filters
-- [ ] Mobile app (React Native)
-
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
@@ -324,11 +312,6 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## 📝 License
 
 This project is open source and available under the [MIT License](LICENSE).
-
-## 👨‍💻 Author
-
-**Vishal Choudhary**
-- GitHub: [@vishalchoudhary07](https://github.com/vishalchoudhary07)
 
 ## 🙏 Acknowledgments
 
