@@ -297,3 +297,41 @@ async def get_stats(
     except Exception as e:
         logger.error(f"Unexpected error in get_stats: {str(e)}", exc_info=True)
         raise
+
+@app.get("/locations/states/")
+async def get_states(db: AsyncSession = Depends(get_db)):
+    """Get list of all unique states"""
+    result = await db.execute(
+        select(PostOffice.state).distinct().order_by(PostOffice.state)
+    )
+    states = result.scalars().all()
+    return {"states": states}
+
+@app.get("/locations/districts/")
+async def get_districts(state: str, db: AsyncSession = Depends(get_db)):
+    """Get districts for a specific state"""
+    result = await db.execute(
+        select(PostOffice.district)
+        .where(PostOffice.state == state)
+        .distinct()
+        .order_by(PostOffice.district)
+    )
+    districts = result.scalars().all()
+    return {"districts": districts}
+
+@app.get("/locations/posts/")
+async def get_posts_by_district(
+    district: str, 
+    skip: int = 0, 
+    limit: int = 100,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all post offices in a specific district"""
+    result = await db.execute(
+        select(PostOffice)
+        .where(PostOffice.district == district)
+        .offset(skip)
+        .limit(limit)
+    )
+    posts = result.scalars().all()
+    return {"posts": posts, "count": len(posts)}

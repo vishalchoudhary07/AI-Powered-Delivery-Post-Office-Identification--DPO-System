@@ -3,7 +3,7 @@
 import { useRef, useEffect, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
-mapboxgl.accessToken = 'YOUR_DUMMY_TOKEN';
+//mapboxgl.accessToken = 'YOUR_DUMMY_TOKEN';
 
 const mapStyles = {
   streets: `https://api.maptiler.com/maps/streets-v2/style.json?key=${process.env.NEXT_PUBLIC_MAPTILER_KEY}`,
