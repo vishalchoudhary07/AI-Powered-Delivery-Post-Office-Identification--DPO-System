@@ -3,7 +3,6 @@ import { useRef, useEffect, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
-// MapTiler style URLs - NO TOKEN NEEDED FOR MAPLIBRE!
 const mapStyles = {
   streets: `https://api.maptiler.com/maps/streets-v2/style.json?key=${process.env.NEXT_PUBLIC_MAPTILER_KEY}`,
   satellite: `https://api.maptiler.com/maps/satellite/style.json?key=${process.env.NEXT_PUBLIC_MAPTILER_KEY}`,
@@ -14,130 +13,211 @@ export default function MapComponent({ searchResults, selectedPost }) {
   const mapContainer = useRef(null);
   const map = useRef(null);
   const markers = useRef([]);
-  const [currentStyle, setCurrentStyle] = useState(mapStyles.streets);
+  const [currentStyle, setCurrentStyle] = useState('streets');
 
-  // Initialize map
+  const isValidCoordinate = (lat, lng) => {
+    return (
+      lat !== null &&
+      lat !== undefined &&
+      lng !== null &&
+      lng !== undefined &&
+      !isNaN(lat) &&
+      !isNaN(lng) &&
+      lat >= -90 &&
+      lat <= 90 &&
+      lng >= -180 &&
+      lng <= 180
+    );
+  };
+
   useEffect(() => {
-    if (map.current) return; // Initialize map only once
+    if (map.current) return;
 
     map.current = new maplibregl.Map({
       container: mapContainer.current,
-      style: currentStyle,
-      center: [78.4867, 17.3850], // Default center (Hyderabad, India)
+      style: mapStyles[currentStyle],
+      center: [78.4867, 17.3850],
       zoom: 10,
     });
 
-    // Add navigation controls
     map.current.addControl(new maplibregl.NavigationControl(), 'top-right');
   }, []);
 
-  // Handle style changes
   useEffect(() => {
     if (!map.current) return;
-    
-    map.current.setStyle(currentStyle);
+    map.current.setStyle(mapStyles[currentStyle]);
   }, [currentStyle]);
 
-  // Update markers when search results change
   useEffect(() => {
     if (!map.current || !searchResults) return;
 
-    // Clear existing markers
-    markers.current.forEach(marker => marker.remove());
+    markers.current.forEach(markerData => markerData.marker.remove());
     markers.current = [];
 
-    // Add new markers
-    searchResults.forEach((post) => {
-      if (post.latitude && post.longitude) {
-        const el = document.createElement('div');
-        el.className = 'marker';
-        el.style.width = '12px';
-        el.style.height = '12px';
-        el.style.borderRadius = '50%';
-        el.style.backgroundColor = selectedPost?.id === post.id ? '#ff0000' : '#007bff';
-        el.style.border = '2px solid white';
-        el.style.cursor = 'pointer';
+    const validPosts = searchResults.filter(post => 
+      isValidCoordinate(post.latitude, post.longitude)
+    );
 
-        const marker = new maplibregl.Marker({ element: el })
-          .setLngLat([post.longitude, post.latitude])
-          .setPopup(
-            new maplibregl.Popup({ offset: 25 })
-              .setHTML(
-                `<div style="padding: 10px;">
-                  <strong>${post.office_name || post.name}</strong><br/>
-                  <span style="color: #666;">Pincode: ${post.pincode}</span><br/>
-                  <span style="color: #666;">${post.district}, ${post.state_name || post.state}</span>
-                  ${post.distance_km ? `<br/><span style="color: #007bff; font-weight: bold;">${post.distance_km.toFixed(1)} km away</span>` : ''}
-                </div>`
-              )
-          )
-          .addTo(map.current);
+    if (validPosts.length === 0) return;
 
-        markers.current.push(marker);
+    validPosts.forEach((post) => {
+      const isSelected = selectedPost?.id === post.id;
+      
+      const wrapper = document.createElement('div');
+      wrapper.className = 'marker-wrapper';
+      wrapper.style.width = '30px';
+      wrapper.style.height = '40px';
+      wrapper.style.cursor = 'pointer';
+      
+      const el = document.createElement('div');
+      el.className = 'custom-marker';
+      el.style.width = '100%';
+      el.style.height = '100%';
+      el.style.transition = 'transform 0.2s ease';
+      
+      el.innerHTML = `
+        <svg width="30" height="40" viewBox="0 0 30 40" xmlns="http://www.w3.org/2000/svg">
+          <path d="M15 0C6.716 0 0 6.716 0 15c0 11.25 15 25 15 25s15-13.75 15-25c0-8.284-6.716-15-15-15z" 
+                fill="${isSelected ? '#ef4444' : '#3b82f6'}" 
+                stroke="#ffffff" 
+                stroke-width="2"/>
+          <circle cx="15" cy="15" r="5" fill="#ffffff"/>
+        </svg>
+      `;
+      
+      if (isSelected) {
+        el.style.animation = 'pulse 2s infinite';
       }
+
+      wrapper.onmouseenter = function() {
+        el.style.transform = 'scale(1.1)';
+      };
+
+      wrapper.onmouseleave = function() {
+        el.style.transform = 'scale(1)';
+      };
+
+      wrapper.appendChild(el);
+
+      // ✅ Enhanced popup with state information
+      const stateName = post.state_name || post.state || '';
+      
+      const popup = new maplibregl.Popup({ 
+        offset: 25, 
+        className: 'custom-popup',
+        closeButton: true,
+        closeOnClick: false
+      }).setHTML(
+        `<div style="padding: 12px; min-width: 220px;">
+          <h3 style="margin: 0 0 10px 0; font-weight: 600; color: #1f2937; font-size: 16px; border-bottom: 2px solid #3b82f6; padding-bottom: 6px;">${post.name}</h3>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <p style="margin: 0; color: #4b5563; font-size: 14px;">
+              <strong style="color: #1f2937;">📮 Pincode:</strong> ${post.pincode}
+            </p>
+            <p style="margin: 0; color: #4b5563; font-size: 14px;">
+              <strong style="color: #1f2937;">🏛️ District:</strong> ${post.district}
+            </p>
+            ${stateName ? `<p style="margin: 0; color: #4b5563; font-size: 14px;">
+              <strong style="color: #1f2937;">🗺️ State:</strong> ${stateName}
+            </p>` : ''}
+            ${post.distance_km ? `<p style="margin: 6px 0 0 0; color: #2563eb; font-size: 14px; font-weight: 600; padding-top: 6px; border-top: 1px solid #e5e7eb;">
+              📍 ${post.distance_km.toFixed(2)} km away
+            </p>` : ''}
+          </div>
+        </div>`
+      );
+
+      const marker = new maplibregl.Marker({ 
+        element: wrapper,
+        anchor: 'bottom'
+      })
+        .setLngLat([post.longitude, post.latitude])
+        .setPopup(popup)
+        .addTo(map.current);
+
+      markers.current.push({
+        id: post.id,
+        marker: marker,
+        popup: popup
+      });
     });
 
-    // Fit map to show all markers
-    if (searchResults.length > 0) {
+    if (validPosts.length > 0) {
       const bounds = new maplibregl.LngLatBounds();
-      searchResults.forEach((post) => {
-        if (post.latitude && post.longitude) {
-          bounds.extend([post.longitude, post.latitude]);
-        }
+      
+      validPosts.forEach(post => {
+        bounds.extend([post.longitude, post.latitude]);
       });
-      map.current.fitBounds(bounds, { padding: 50, maxZoom: 15 });
+
+      map.current.fitBounds(bounds, {
+        padding: { top: 50, bottom: 50, left: 50, right: 50 },
+        maxZoom: 15,
+        duration: 1000
+      });
     }
   }, [searchResults, selectedPost]);
 
-  // Center map on selected post
   useEffect(() => {
     if (!map.current || !selectedPost) return;
-
-    if (selectedPost.latitude && selectedPost.longitude) {
+    
+    if (isValidCoordinate(selectedPost.latitude, selectedPost.longitude)) {
       map.current.flyTo({
         center: [selectedPost.longitude, selectedPost.latitude],
         zoom: 14,
-        duration: 1000,
+        duration: 1500,
+        essential: true
       });
 
-      // Update marker colors
-      markers.current.forEach((marker, index) => {
-        const el = marker.getElement();
-        el.style.backgroundColor = searchResults[index]?.id === selectedPost.id ? '#ff0000' : '#007bff';
-      });
+      const selectedMarkerData = markers.current.find(m => m.id === selectedPost.id);
+      if (selectedMarkerData) {
+        markers.current.forEach(m => {
+          if (m.id !== selectedPost.id && m.marker.getPopup().isOpen()) {
+            m.marker.togglePopup();
+          }
+        });
+        
+        if (!selectedMarkerData.marker.getPopup().isOpen()) {
+          selectedMarkerData.marker.togglePopup();
+        }
+      }
     }
-  }, [selectedPost, searchResults]);
+  }, [selectedPost]);
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-      <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
+    <div className="relative w-full h-full">
+      <div ref={mapContainer} className="w-full h-full" />
       
-      {/* Map Style Selector */}
-      <div style={{
-        position: 'absolute',
-        top: '10px',
-        right: '50px',
-        background: 'white',
-        borderRadius: '4px',
-        boxShadow: '0 0 10px rgba(0,0,0,0.1)',
-        zIndex: 1
-      }}>
-        <select
-          value={currentStyle}
-          onChange={(e) => setCurrentStyle(e.target.value)}
-          style={{
-            padding: '8px 12px',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '14px',
-            fontWeight: '500'
-          }}
+      <div className="absolute top-4 left-4 bg-white rounded-lg shadow-lg p-2 flex gap-2 z-10">
+        <button
+          onClick={() => setCurrentStyle('streets')}
+          className={`px-4 py-2 rounded font-medium transition-all duration-200 transform active:scale-95 ${
+            currentStyle === 'streets'
+              ? 'bg-blue-600 text-white shadow-md'
+              : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
+          }`}
         >
-          <option value={mapStyles.streets}>Streets</option>
-          <option value={mapStyles.satellite}>Satellite</option>
-          <option value={mapStyles.topo}>Topographic</option>
-        </select>
+          🗺️ Streets
+        </button>
+        <button
+          onClick={() => setCurrentStyle('satellite')}
+          className={`px-4 py-2 rounded font-medium transition-all duration-200 transform active:scale-95 ${
+            currentStyle === 'satellite'
+              ? 'bg-blue-600 text-white shadow-md'
+              : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
+          }`}
+        >
+          🛰️ Satellite
+        </button>
+        <button
+          onClick={() => setCurrentStyle('topo')}
+          className={`px-4 py-2 rounded font-medium transition-all duration-200 transform active:scale-95 ${
+            currentStyle === 'topo'
+              ? 'bg-blue-600 text-white shadow-md'
+              : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
+          }`}
+        >
+          ⛰️ Topo
+        </button>
       </div>
     </div>
   );

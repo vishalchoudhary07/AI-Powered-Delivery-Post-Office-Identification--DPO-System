@@ -3,9 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { getDistance } from 'geolib';
 
-const MapComponent = dynamic(() => import('../components/MapComponent'), {
-  ssr: false
-});
+const MapComponent = dynamic(() => import('../components/MapComponent'), { ssr: false });
 
 export default function Home() {
   const [results, setResults] = useState([]);
@@ -20,6 +18,11 @@ export default function Home() {
   const [districts, setDistricts] = useState([]);
   const [selectedDistrict, setSelectedDistrict] = useState(null);
   const [error, setError] = useState(null);
+  const [isTyping, setIsTyping] = useState(false);
+  
+  // ✅ FIX 2: Separate state for each view mode
+  const [searchResults, setSearchResults] = useState([]);
+  const [browseResults, setBrowseResults] = useState([]);
 
   useEffect(() => {
     const fetchStates = async () => {
@@ -28,7 +31,7 @@ export default function Home() {
         if (!response.ok) throw new Error('Failed to fetch states');
         const data = await response.json();
         setStates(data.states || []);
-      } catch (error) { 
+      } catch (error) {
         console.error("Failed to fetch states:", error);
         setError("Failed to load states");
       }
@@ -46,11 +49,11 @@ export default function Home() {
         if (!response.ok) throw new Error('Failed to fetch districts');
         const data = await response.json();
         setDistricts(data.districts || []);
-      } catch (error) { 
+      } catch (error) {
         console.error("Failed to fetch districts:", error);
         setError("Failed to load districts");
-      } finally { 
-        setIsLoading(false); 
+      } finally {
+        setIsLoading(false);
       }
     };
     fetchDistricts();
@@ -80,14 +83,14 @@ export default function Home() {
           });
         }
         
+        setBrowseResults(posts);
         setResults(posts);
         if (posts.length > 0) setSelectedPost(posts[0]);
-
-      } catch (error) { 
+      } catch (error) {
         console.error("Failed to fetch posts:", error);
         setError("Failed to load post offices");
-      } finally { 
-        setIsLoading(false); 
+      } finally {
+        setIsLoading(false);
       }
     };
     fetchPosts();
@@ -96,7 +99,10 @@ export default function Home() {
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        (position) => setUserLocation({ lat: position.coords.latitude, lon: position.coords.longitude }),
+        (position) => setUserLocation({ 
+          lat: position.coords.latitude, 
+          lon: position.coords.longitude 
+        }),
         (error) => setLocationError("Location access denied. Search results may be limited.")
       );
     } else {
@@ -106,11 +112,12 @@ export default function Home() {
 
   const handleSearch = useCallback(async () => {
     if (query.trim() === '') {
+      setSearchResults([]);
       setResults([]);
       setSelectedPost(null);
       return;
     }
-    
+
     if (!userLocation) {
       setError("Please enable location access for search");
       return;
@@ -118,9 +125,8 @@ export default function Home() {
 
     setIsLoading(true);
     setError(null);
-    
+
     try {
-      // ✅ CHANGED: Added radius_km=500 parameter
       const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/posts/hybrid-search/?q=${encodeURIComponent(query)}&lat=${userLocation.lat}&lon=${userLocation.lon}&radius_km=500`;
       const response = await fetch(apiUrl);
       
@@ -129,12 +135,11 @@ export default function Home() {
         console.error('API Error:', response.status, errorText);
         throw new Error(`Search failed: ${response.status}`);
       }
-      
+
       const data = await response.json();
-      
-      // Handle both array response and object with results property
       const posts = Array.isArray(data) ? data : (data.results || data.posts || []);
       
+      setSearchResults(posts);
       setResults(posts);
       if (posts.length > 0) {
         setSelectedPost(posts[0]);
@@ -142,123 +147,250 @@ export default function Home() {
         setSelectedPost(null);
         setError("No results found. Try a different search term.");
       }
-    } catch (error) { 
+    } catch (error) {
       console.error('Search failed:', error);
       setError(`Search failed: ${error.message}`);
+      setSearchResults([]);
       setResults([]);
       setSelectedPost(null);
-    } finally { 
-      setIsLoading(false); 
+    } finally {
+      setIsLoading(false);
     }
   }, [query, userLocation]);
 
   useEffect(() => {
-    const timer = setTimeout(() => { 
-      if (query.trim() !== '') handleSearch(); 
+    const timer = setTimeout(() => {
+      if (query.trim() !== '') handleSearch();
+      setIsTyping(false);
     }, 500);
     return () => clearTimeout(timer);
   }, [query, handleSearch]);
-  
+
+  const handleQueryChange = (e) => {
+    setQuery(e.target.value);
+    setIsTyping(true);
+  };
+
   const resetBrowse = () => {
     setSelectedState(null);
     setSelectedDistrict(null);
     setDistricts([]);
-    setResults([]);
-    setSelectedPost(null);
+    setBrowseResults([]);
+  };
+
+  // ✅ FIX 2: Preserve state when switching views
+  const handleViewChange = (newView) => {
+    setView(newView);
+    
+    if (newView === 'search') {
+      // Restore search results
+      setResults(searchResults);
+      if (searchResults.length > 0) {
+        setSelectedPost(searchResults[0]);
+      } else {
+        setSelectedPost(null);
+      }
+      // Clear browse state
+      setSelectedState(null);
+      setSelectedDistrict(null);
+      setDistricts([]);
+    } else if (newView === 'browse') {
+      // Restore browse results if any
+      setResults(browseResults);
+      if (browseResults.length > 0) {
+        setSelectedPost(browseResults[0]);
+      } else {
+        setSelectedPost(null);
+      }
+    }
     setError(null);
   };
 
   const ListItem = ({ text, onClick }) => (
-    <div onClick={onClick} style={{ padding: '12px 16px', background: '#fff', border: '1px solid #e0e0e0', borderRadius: '8px', marginBottom: '8px', cursor: 'pointer', fontWeight: '500', color: '#1a1a1a' }}>
-      {text}
-    </div>
-  );
-  
-  const backButtonStyle = {
-    marginBottom: '15px', padding: '8px 12px', background: '#f0f0f0', color: '#333',
-    border: '1px solid #ccc', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold'
-  };
-
-  const PostResultCard = ({ post }) => (
-    <div 
-      key={post.id} 
-      onClick={() => setSelectedPost(post)} 
-      style={{ background: '#ffffff', border: selectedPost?.id === post.id ? '2px solid #007bff' : '1px solid #e0e0e0', borderRadius: '8px', padding: '16px', marginBottom: '12px', cursor: 'pointer' }}
+    <div
+      onClick={onClick}
+      className="p-3 cursor-pointer transition-all duration-200 hover:bg-blue-100 hover:translate-x-1 hover:shadow-md rounded-lg border border-transparent hover:border-blue-300 text-gray-900 hover:text-gray-900"
+      style={{ willChange: 'transform' }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <strong style={{ color: '#1a1a1a', paddingRight: '10px' }}>{post.office_name || post.name}</strong>
-        {post.distance_km !== undefined && (
-          <span style={{ color: '#007bff', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
-            {post.distance_km.toFixed(1)} km
-          </span>
-        )}
-      </div>
-      <p style={{ margin: '4px 0 0', color: '#666', fontSize: '14px' }}>
-        Pincode: {post.pincode}
-      </p>
-      <p style={{ margin: '4px 0 0', color: '#666', fontSize: '14px' }}>
-        {post.district}, {post.state_name || post.state}
-      </p>
+      {text}
     </div>
   );
 
   return (
-    <main style={{ display: 'flex', height: '100vh', fontFamily: 'sans-serif' }}>
-      <div style={{ width: '400px', padding: '20px', overflowY: 'auto', background: '#f7f7f7' }}>
-        <h1 style={{ color: '#1a1a1a', marginBottom: '20px' }}>Delivery Post Office Finder</h1>
-        
-        <div style={{ display: 'flex', marginBottom: '20px', borderBottom: '1px solid #ccc' }}>
-          <button onClick={() => { setView('search'); resetBrowse(); }} style={{ flex: 1, padding: '10px', background: view === 'search' ? '#007bff' : 'transparent', color: view === 'search' ? '#fff' : '#333', border: 'none', cursor: 'pointer', fontSize: '16px' }}>Search</button>
-          <button onClick={() => { setView('browse'); setQuery(''); setResults([]); setSelectedPost(null); setError(null); }} style={{ flex: 1, padding: '10px', background: view === 'browse' ? '#007bff' : 'transparent', color: view === 'browse' ? '#fff' : '#333', border: 'none', cursor: 'pointer', fontSize: '16px' }}>Browse</button>
+    <div className="flex flex-col md:flex-row h-screen">
+      {/* Left Panel */}
+      <div className="md:w-1/3 w-full overflow-auto p-4 border-r bg-white">
+        <h1 className="text-2xl font-bold mb-4 text-gray-900">📮 Delivery Post Office Finder</h1>
+
+        <div className="flex gap-2 mb-4">
+          <button
+            onClick={() => handleViewChange('search')}
+            className={`px-4 py-2 rounded transition-all duration-200 transform active:scale-95 font-medium ${
+              view === 'search'
+                ? 'bg-blue-600 text-white shadow-lg hover:bg-blue-700'
+                : 'bg-gray-200 text-gray-900 hover:bg-gray-300 hover:shadow-md'
+            }`}
+          >
+            🔍 Search
+          </button>
+          <button
+            onClick={() => handleViewChange('browse')}
+            className={`px-4 py-2 rounded transition-all duration-200 transform active:scale-95 font-medium ${
+              view === 'browse'
+                ? 'bg-blue-600 text-white shadow-lg hover:bg-blue-700'
+                : 'bg-gray-200 text-gray-900 hover:bg-gray-300 hover:shadow-md'
+            }`}
+          >
+            📂 Browse
+          </button>
         </div>
 
-        {view === 'search' ? (
-          <>
-            <input 
-              type="text" 
-              value={query} 
-              onChange={(e) => setQuery(e.target.value)} 
-              placeholder="Search by area..." 
-              style={{ width: '100%', padding: '12px', fontSize: '16px', marginBottom: '20px', border: '1px solid #ccc', borderRadius: '8px', boxSizing: 'border-box', color: '#1a1a1a' }} 
+        {/* Search View */}
+        {view === 'search' && (
+          <div>
+            <input
+              type="text"
+              placeholder="Search post offices..."
+              value={query}
+              onChange={handleQueryChange}
+              className={`w-full p-2 border rounded mb-4 transition-all duration-200 text-gray-900 bg-white ${
+                isTyping ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-300'
+              }`}
             />
+
+            {isLoading && (
+              <div className="flex items-center gap-2 mb-4 p-3 bg-blue-50 rounded border border-blue-200">
+                <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                <span className="text-blue-800 font-medium">Loading...</span>
+              </div>
+            )}
+
+            {locationError && (
+              <div className="mb-4 p-3 bg-yellow-50 border border-yellow-400 rounded text-yellow-900">
+                {locationError}
+              </div>
+            )}
+
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-400 rounded text-red-900">
+                {error}
+              </div>
+            )}
+
+            {!isLoading && results.length === 0 && query && (
+              <p className="text-gray-600">No results found</p>
+            )}
             
-            {isLoading && <p style={{ color: '#007bff', margin: '10px 0', fontWeight: 'bold' }}>Loading...</p>}
-            {locationError && <p style={{color: '#ff6b6b', marginBottom: '15px', padding: '10px', background: '#fff', borderRadius: '8px', fontSize: '14px'}}>{locationError}</p>}
-            {error && <p style={{color: '#ff6b6b', marginBottom: '15px', padding: '10px', background: '#fff', borderRadius: '8px', fontSize: '14px'}}>{error}</p>}
-            
-            <div>
-              {results.length === 0 && query && !isLoading && !error && (
-                <p style={{ color: '#666', textAlign: 'center', marginTop: '40px' }}>No results found</p>
-              )}
-              {results.map((post) => <PostResultCard key={post.id} post={post} />)}
-            </div>
-          </>
-        ) : (
-          <>
-            {isLoading && <p style={{ color: '#007bff', margin: '10px 0', fontWeight: 'bold' }}>Loading...</p>}
-            {error && <p style={{color: '#ff6b6b', marginBottom: '15px', padding: '10px', background: '#fff', borderRadius: '8px', fontSize: '14px'}}>{error}</p>}
-            
-            {!selectedState && states.map(s => <ListItem key={s} text={s} onClick={() => setSelectedState(s)} />)}
-            
+            {results.map((post, index) => (
+              <div
+                key={post.id}
+                onClick={() => setSelectedPost(post)}
+                className={`p-4 mb-2 border rounded-lg cursor-pointer transition-all duration-300 transform hover:scale-[1.02] hover:shadow-lg ${
+                  selectedPost?.id === post.id
+                    ? 'border-blue-600 bg-blue-100 shadow-md text-gray-900'
+                    : 'border-gray-300 hover:border-blue-400 bg-white text-gray-900 hover:bg-blue-50'
+                }`}
+                style={{ 
+                  animationName: 'fadeInUp',
+                  animationDuration: '0.3s',
+                  animationTimingFunction: 'ease',
+                  animationDelay: `${index * 50}ms`,
+                  animationFillMode: 'forwards',
+                  opacity: 0
+                }}
+              >
+                <h3 className="font-semibold text-gray-900">{post.name}</h3>
+                <p className="text-sm text-gray-700">Pincode: {post.pincode}</p>
+                <p className="text-sm text-gray-700">{post.district}, {post.state_name || post.state}</p>
+                {post.distance_km && (
+                  <p className="text-sm text-blue-700 font-medium mt-1">
+                    📍 {post.distance_km.toFixed(2)} km away
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Browse View */}
+        {view === 'browse' && (
+          <div>
+            {isLoading && (
+              <div className="flex items-center gap-2 mb-4 p-3 bg-blue-50 rounded border border-blue-200">
+                <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                <span className="text-blue-800 font-medium">Loading...</span>
+              </div>
+            )}
+
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-400 rounded text-red-900">
+                {error}
+              </div>
+            )}
+
+            {!selectedState && states.map(s => (
+              <ListItem key={s} text={s} onClick={() => setSelectedState(s)} />
+            ))}
+
             {selectedState && !selectedDistrict && (
               <>
-                <button onClick={() => { setSelectedState(null); setDistricts([]); }} style={backButtonStyle}>&larr; Back to States</button>
-                {districts.map(d => <ListItem key={d} text={d} onClick={() => setSelectedDistrict(d)} />)}
+                <button
+                  onClick={() => setSelectedState(null)}
+                  className="mb-4 px-4 py-2 bg-gray-200 text-gray-900 rounded hover:bg-gray-300 transition-all duration-200 transform active:scale-95 font-medium"
+                >
+                  ← Back to States
+                </button>
+                <h2 className="text-xl font-bold mb-2 text-gray-900">{selectedState}</h2>
+                {districts.map(d => (
+                  <ListItem key={d} text={d} onClick={() => setSelectedDistrict(d)} />
+                ))}
               </>
             )}
-            
+
             {selectedDistrict && (
               <>
-                <button onClick={() => { setSelectedDistrict(null); setResults([]); setSelectedPost(null); }} style={backButtonStyle}>&larr; Back to Districts</button>
-                {results.map((post) => <PostResultCard key={post.id} post={post} />)}
+                <button
+                  onClick={() => setSelectedDistrict(null)}
+                  className="mb-4 px-4 py-2 bg-gray-200 text-gray-900 rounded hover:bg-gray-300 transition-all duration-200 transform active:scale-95 font-medium"
+                >
+                  ← Back to Districts
+                </button>
+                <h2 className="text-xl font-bold mb-2 text-gray-900">{selectedDistrict}</h2>
+                {results.map((post, index) => (
+                  <div
+                    key={post.id}
+                    onClick={() => setSelectedPost(post)}
+                    className={`p-4 mb-2 border rounded-lg cursor-pointer transition-all duration-300 transform hover:scale-[1.02] hover:shadow-lg ${
+                      selectedPost?.id === post.id
+                        ? 'border-blue-600 bg-blue-100 shadow-md text-gray-900'
+                        : 'border-gray-300 hover:border-blue-400 bg-white text-gray-900 hover:bg-blue-50'
+                    }`}
+                    style={{ 
+                      animationName: 'fadeInUp',
+                      animationDuration: '0.3s',
+                      animationTimingFunction: 'ease',
+                      animationDelay: `${index * 50}ms`,
+                      animationFillMode: 'forwards',
+                      opacity: 0
+                    }}
+                  >
+                    <h3 className="font-semibold text-gray-900">{post.name}</h3>
+                    <p className="text-sm text-gray-700">Pincode: {post.pincode}</p>
+                  </div>
+                ))}
               </>
             )}
-          </>
+          </div>
         )}
       </div>
-      <div style={{ flex: 1 }}>
-        <MapComponent searchResults={results} selectedPost={selectedPost} />
+
+      {/* Right Panel - Map */}
+      <div className="md:w-2/3 w-full">
+        <MapComponent
+          searchResults={results}
+          selectedPost={selectedPost}
+        />
       </div>
-    </main>
+    </div>
   );
 }
