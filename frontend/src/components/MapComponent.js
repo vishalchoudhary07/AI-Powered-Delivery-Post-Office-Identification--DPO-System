@@ -99,7 +99,7 @@ export default function MapComponent({ searchResults, selectedPost }) {
 
       wrapper.appendChild(el);
 
-      // ✅ Enhanced popup with state information
+      // ✅ FIXED: Popup with proper dark mode support using classes
       const stateName = post.state_name || post.state || '';
       
       const popup = new maplibregl.Popup({ 
@@ -108,19 +108,22 @@ export default function MapComponent({ searchResults, selectedPost }) {
         closeButton: true,
         closeOnClick: false
       }).setHTML(
-        `<div style="padding: 12px; min-width: 220px;">
-          <h3 style="margin: 0 0 10px 0; font-weight: 600; color: #1f2937; font-size: 16px; border-bottom: 2px solid #3b82f6; padding-bottom: 6px;">${post.name}</h3>
-          <div style="display: flex; flex-direction: column; gap: 6px;">
-            <p style="margin: 0; color: #4b5563; font-size: 14px;">
-              <strong style="color: #1f2937;">📮 Pincode:</strong> ${post.pincode}
+        `<div class="popup-content-wrapper">
+          <h3 class="popup-title">${post.name}</h3>
+          <div class="popup-details">
+            <p class="popup-detail">
+              <strong class="popup-label">📮 Pincode:</strong> 
+              <span class="popup-value">${post.pincode}</span>
             </p>
-            <p style="margin: 0; color: #4b5563; font-size: 14px;">
-              <strong style="color: #1f2937;">🏛️ District:</strong> ${post.district}
+            <p class="popup-detail">
+              <strong class="popup-label">🏛️ District:</strong> 
+              <span class="popup-value">${post.district}</span>
             </p>
-            ${stateName ? `<p style="margin: 0; color: #4b5563; font-size: 14px;">
-              <strong style="color: #1f2937;">🗺️ State:</strong> ${stateName}
+            ${stateName ? `<p class="popup-detail">
+              <strong class="popup-label">🗺️ State:</strong> 
+              <span class="popup-value">${stateName}</span>
             </p>` : ''}
-            ${post.distance_km ? `<p style="margin: 6px 0 0 0; color: #2563eb; font-size: 14px; font-weight: 600; padding-top: 6px; border-top: 1px solid #e5e7eb;">
+            ${post.distance_km ? `<p class="popup-distance">
               📍 ${post.distance_km.toFixed(2)} km away
             </p>` : ''}
           </div>
@@ -187,13 +190,13 @@ export default function MapComponent({ searchResults, selectedPost }) {
     <div className="relative w-full h-full">
       <div ref={mapContainer} className="w-full h-full" />
       
-      <div className="absolute top-4 left-4 bg-white rounded-lg shadow-lg p-2 flex gap-2 z-10">
+      <div className="absolute top-4 left-4 bg-white dark:bg-gray-800 rounded-lg shadow-lg p-2 flex gap-2 z-10 border border-gray-200 dark:border-gray-700">
         <button
           onClick={() => setCurrentStyle('streets')}
           className={`px-4 py-2 rounded font-medium transition-all duration-200 transform active:scale-95 ${
             currentStyle === 'streets'
               ? 'bg-blue-600 text-white shadow-md'
-              : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
+              : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600'
           }`}
         >
           🗺️ Streets
@@ -203,7 +206,7 @@ export default function MapComponent({ searchResults, selectedPost }) {
           className={`px-4 py-2 rounded font-medium transition-all duration-200 transform active:scale-95 ${
             currentStyle === 'satellite'
               ? 'bg-blue-600 text-white shadow-md'
-              : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
+              : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600'
           }`}
         >
           🛰️ Satellite
@@ -213,7 +216,7 @@ export default function MapComponent({ searchResults, selectedPost }) {
           className={`px-4 py-2 rounded font-medium transition-all duration-200 transform active:scale-95 ${
             currentStyle === 'topo'
               ? 'bg-blue-600 text-white shadow-md'
-              : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
+              : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600'
           }`}
         >
           ⛰️ Topo

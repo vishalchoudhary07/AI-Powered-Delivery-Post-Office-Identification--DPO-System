@@ -1,15 +1,11 @@
 @import "tailwindcss";
 
+
+@variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -19,79 +15,34 @@
   }
 }
 
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
-}
-input::placeholder {
-  color: #999; 
-}
-/* Smooth transitions for all interactive elements */
-button, a, input, select {
-  transition: all 0.2s ease;
-}
-
-/* Button hover effects */
-button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
-button:active {
-  transform: translateY(0);
-}
-
-/* Loading spinner animation */
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.spinner {
-  animation: spin 1s linear infinite;
-}
-
-/* Focus states for accessibility */
-input:focus, select:focus, button:focus {
-  outline: 2px solid var(--foreground);
-  outline-offset: 2px;
-}
-
-/* Smooth color transitions for dark mode */
-* {
   transition: background-color 0.3s ease, color 0.3s ease;
 }
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-/* Text selection with proper contrast */
-::selection {
-  background-color: #3b82f6;
-  color: #ffffff;
+
+input::placeholder {
+  color: #999;
 }
 
-::-moz-selection {
-  background-color: #3b82f6;
-  color: #ffffff;
+/* Dark mode specific styles */
+.dark body {
+  background: #0a0a0a;
+  color: #ededed;
 }
 
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.dark input::placeholder {
+  color: #666;
 }
+
 /* Marker styling */
 .custom-marker {
   transition: transform 0.2s ease;
@@ -116,6 +67,12 @@ input:focus, select:focus, button:focus {
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   padding: 0 !important;
+  background: white;
+}
+
+.dark .maplibregl-popup-content {
+  background: #1f2937;
+  color: #f3f4f6;
 }
 
 .maplibregl-popup-close-button {
@@ -126,9 +83,18 @@ input:focus, select:focus, button:focus {
   top: 4px;
 }
 
+.dark .maplibregl-popup-close-button {
+  color: #9ca3af;
+}
+
 .maplibregl-popup-close-button:hover {
   background-color: #f3f4f6;
   color: #1f2937;
+}
+
+.dark .maplibregl-popup-close-button:hover {
+  background-color: #374151;
+  color: #f3f4f6;
 }
 
 /* Text selection */
@@ -153,5 +119,101 @@ input:focus, select:focus, button:focus {
     transform: translateY(0);
   }
 }
+.popup-content-wrapper {
+  padding: 12px;
+  min-width: 220px;
+}
 
+.popup-title {
+  margin: 0 0 10px 0;
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 16px;
+  border-bottom: 2px solid #3b82f6;
+  padding-bottom: 6px;
+}
 
+.dark .popup-title {
+  color: #f3f4f6;
+}
+
+.popup-details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.popup-detail {
+  margin: 0;
+  color: #4b5563;
+  font-size: 14px;
+}
+
+.dark .popup-detail {
+  color: #d1d5db;
+}
+
+.popup-label {
+  color: #1f2937;
+}
+
+.dark .popup-label {
+  color: #f9fafb;
+}
+
+.popup-value {
+  color: #4b5563;
+}
+
+.dark .popup-value {
+  color: #d1d5db;
+}
+
+.popup-distance {
+  margin: 6px 0 0 0;
+  color: #2563eb;
+  font-size: 14px;
+  font-weight: 600;
+  padding-top: 6px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.dark .popup-distance {
+  color: #60a5fa;
+  border-top-color: #374151;
+}
+
+/* Popup container dark mode */
+.maplibregl-popup-content {
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 0 !important;
+  background: white;
+}
+
+.dark .maplibregl-popup-content {
+  background: #1f2937;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.maplibregl-popup-close-button {
+  font-size: 20px;
+  padding: 4px 8px;
+  color: #6b7280;
+  right: 4px;
+  top: 4px;
+}
+
+.dark .maplibregl-popup-close-button {
+  color: #9ca3af;
+}
+
+.maplibregl-popup-close-button:hover {
+  background-color: #f3f4f6;
+  color: #1f2937;
+}
+
+.dark .maplibregl-popup-close-button:hover {
+  background-color: #374151;
+  color: #f3f4f6;
+}

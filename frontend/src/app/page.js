@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { getDistance } from 'geolib';
+import ThemeToggle from '../components/ThemeToggle';
 
 const MapComponent = dynamic(() => import('../components/MapComponent'), { ssr: false });
 
@@ -19,8 +20,6 @@ export default function Home() {
   const [selectedDistrict, setSelectedDistrict] = useState(null);
   const [error, setError] = useState(null);
   const [isTyping, setIsTyping] = useState(false);
-  
-  // ✅ FIX 2: Separate state for each view mode
   const [searchResults, setSearchResults] = useState([]);
   const [browseResults, setBrowseResults] = useState([]);
 
@@ -178,24 +177,20 @@ export default function Home() {
     setBrowseResults([]);
   };
 
-  // ✅ FIX 2: Preserve state when switching views
   const handleViewChange = (newView) => {
     setView(newView);
     
     if (newView === 'search') {
-      // Restore search results
       setResults(searchResults);
       if (searchResults.length > 0) {
         setSelectedPost(searchResults[0]);
       } else {
         setSelectedPost(null);
       }
-      // Clear browse state
       setSelectedState(null);
       setSelectedDistrict(null);
       setDistricts([]);
     } else if (newView === 'browse') {
-      // Restore browse results if any
       setResults(browseResults);
       if (browseResults.length > 0) {
         setSelectedPost(browseResults[0]);
@@ -209,7 +204,7 @@ export default function Home() {
   const ListItem = ({ text, onClick }) => (
     <div
       onClick={onClick}
-      className="p-3 cursor-pointer transition-all duration-200 hover:bg-blue-100 hover:translate-x-1 hover:shadow-md rounded-lg border border-transparent hover:border-blue-300 text-gray-900 hover:text-gray-900"
+      className="p-3 cursor-pointer transition-all duration-200 hover:bg-blue-100 dark:hover:bg-gray-700 hover:translate-x-1 hover:shadow-md rounded-lg border border-transparent hover:border-blue-300 dark:hover:border-blue-600 text-gray-900 dark:text-gray-100"
       style={{ willChange: 'transform' }}
     >
       {text}
@@ -217,18 +212,25 @@ export default function Home() {
   );
 
   return (
-    <div className="flex flex-col md:flex-row h-screen">
+    <div className="flex flex-col md:flex-row h-screen bg-white dark:bg-gray-900">
       {/* Left Panel */}
-      <div className="md:w-1/3 w-full overflow-auto p-4 border-r bg-white">
-        <h1 className="text-2xl font-bold mb-4 text-gray-900">📮 Delivery Post Office Finder</h1>
+      <div className="md:w-1/3 w-full overflow-auto p-4 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+        {/* Header with Theme Toggle */}
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+            📮 Delivery Post Office Finder
+          </h1>
+          <ThemeToggle />
+        </div>
 
+        {/* View Toggle Buttons */}
         <div className="flex gap-2 mb-4">
           <button
             onClick={() => handleViewChange('search')}
             className={`px-4 py-2 rounded transition-all duration-200 transform active:scale-95 font-medium ${
               view === 'search'
                 ? 'bg-blue-600 text-white shadow-lg hover:bg-blue-700'
-                : 'bg-gray-200 text-gray-900 hover:bg-gray-300 hover:shadow-md'
+                : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-600 hover:shadow-md'
             }`}
           >
             🔍 Search
@@ -238,7 +240,7 @@ export default function Home() {
             className={`px-4 py-2 rounded transition-all duration-200 transform active:scale-95 font-medium ${
               view === 'browse'
                 ? 'bg-blue-600 text-white shadow-lg hover:bg-blue-700'
-                : 'bg-gray-200 text-gray-900 hover:bg-gray-300 hover:shadow-md'
+                : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-600 hover:shadow-md'
             }`}
           >
             📂 Browse
@@ -253,32 +255,32 @@ export default function Home() {
               placeholder="Search post offices..."
               value={query}
               onChange={handleQueryChange}
-              className={`w-full p-2 border rounded mb-4 transition-all duration-200 text-gray-900 bg-white ${
-                isTyping ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-300'
+              className={`w-full p-2 border rounded mb-4 transition-all duration-200 text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 ${
+                isTyping ? 'border-blue-500 ring-2 ring-blue-200 dark:ring-blue-800' : 'border-gray-300 dark:border-gray-600'
               }`}
             />
 
             {isLoading && (
-              <div className="flex items-center gap-2 mb-4 p-3 bg-blue-50 rounded border border-blue-200">
+              <div className="flex items-center gap-2 mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-800">
                 <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                <span className="text-blue-800 font-medium">Loading...</span>
+                <span className="text-blue-800 dark:text-blue-300 font-medium">Loading...</span>
               </div>
             )}
 
             {locationError && (
-              <div className="mb-4 p-3 bg-yellow-50 border border-yellow-400 rounded text-yellow-900">
+              <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-400 dark:border-yellow-600 rounded text-yellow-900 dark:text-yellow-300">
                 {locationError}
               </div>
             )}
 
             {error && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-400 rounded text-red-900">
+              <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-400 dark:border-red-600 rounded text-red-900 dark:text-red-300">
                 {error}
               </div>
             )}
 
             {!isLoading && results.length === 0 && query && (
-              <p className="text-gray-600">No results found</p>
+              <p className="text-gray-600 dark:text-gray-400">No results found</p>
             )}
             
             {results.map((post, index) => (
@@ -287,8 +289,8 @@ export default function Home() {
                 onClick={() => setSelectedPost(post)}
                 className={`p-4 mb-2 border rounded-lg cursor-pointer transition-all duration-300 transform hover:scale-[1.02] hover:shadow-lg ${
                   selectedPost?.id === post.id
-                    ? 'border-blue-600 bg-blue-100 shadow-md text-gray-900'
-                    : 'border-gray-300 hover:border-blue-400 bg-white text-gray-900 hover:bg-blue-50'
+                    ? 'border-blue-600 bg-blue-100 dark:bg-blue-900/30 shadow-md text-gray-900 dark:text-gray-100'
+                    : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 hover:bg-blue-50 dark:hover:bg-gray-700'
                 }`}
                 style={{ 
                   animationName: 'fadeInUp',
@@ -299,11 +301,11 @@ export default function Home() {
                   opacity: 0
                 }}
               >
-                <h3 className="font-semibold text-gray-900">{post.name}</h3>
-                <p className="text-sm text-gray-700">Pincode: {post.pincode}</p>
-                <p className="text-sm text-gray-700">{post.district}, {post.state_name || post.state}</p>
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100">{post.name}</h3>
+                <p className="text-sm text-gray-700 dark:text-gray-300">Pincode: {post.pincode}</p>
+                <p className="text-sm text-gray-700 dark:text-gray-300">{post.district}, {post.state_name || post.state}</p>
                 {post.distance_km && (
-                  <p className="text-sm text-blue-700 font-medium mt-1">
+                  <p className="text-sm text-blue-700 dark:text-blue-400 font-medium mt-1">
                     📍 {post.distance_km.toFixed(2)} km away
                   </p>
                 )}
@@ -316,14 +318,14 @@ export default function Home() {
         {view === 'browse' && (
           <div>
             {isLoading && (
-              <div className="flex items-center gap-2 mb-4 p-3 bg-blue-50 rounded border border-blue-200">
+              <div className="flex items-center gap-2 mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-800">
                 <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                <span className="text-blue-800 font-medium">Loading...</span>
+                <span className="text-blue-800 dark:text-blue-300 font-medium">Loading...</span>
               </div>
             )}
 
             {error && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-400 rounded text-red-900">
+              <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-400 dark:border-red-600 rounded text-red-900 dark:text-red-300">
                 {error}
               </div>
             )}
@@ -336,11 +338,11 @@ export default function Home() {
               <>
                 <button
                   onClick={() => setSelectedState(null)}
-                  className="mb-4 px-4 py-2 bg-gray-200 text-gray-900 rounded hover:bg-gray-300 transition-all duration-200 transform active:scale-95 font-medium"
+                  className="mb-4 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded hover:bg-gray-300 dark:hover:bg-gray-600 transition-all duration-200 transform active:scale-95 font-medium"
                 >
                   ← Back to States
                 </button>
-                <h2 className="text-xl font-bold mb-2 text-gray-900">{selectedState}</h2>
+                <h2 className="text-xl font-bold mb-2 text-gray-900 dark:text-gray-100">{selectedState}</h2>
                 {districts.map(d => (
                   <ListItem key={d} text={d} onClick={() => setSelectedDistrict(d)} />
                 ))}
@@ -351,19 +353,19 @@ export default function Home() {
               <>
                 <button
                   onClick={() => setSelectedDistrict(null)}
-                  className="mb-4 px-4 py-2 bg-gray-200 text-gray-900 rounded hover:bg-gray-300 transition-all duration-200 transform active:scale-95 font-medium"
+                  className="mb-4 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded hover:bg-gray-300 dark:hover:bg-gray-600 transition-all duration-200 transform active:scale-95 font-medium"
                 >
                   ← Back to Districts
                 </button>
-                <h2 className="text-xl font-bold mb-2 text-gray-900">{selectedDistrict}</h2>
+                <h2 className="text-xl font-bold mb-2 text-gray-900 dark:text-gray-100">{selectedDistrict}</h2>
                 {results.map((post, index) => (
                   <div
                     key={post.id}
                     onClick={() => setSelectedPost(post)}
                     className={`p-4 mb-2 border rounded-lg cursor-pointer transition-all duration-300 transform hover:scale-[1.02] hover:shadow-lg ${
                       selectedPost?.id === post.id
-                        ? 'border-blue-600 bg-blue-100 shadow-md text-gray-900'
-                        : 'border-gray-300 hover:border-blue-400 bg-white text-gray-900 hover:bg-blue-50'
+                        ? 'border-blue-600 bg-blue-100 dark:bg-blue-900/30 shadow-md text-gray-900 dark:text-gray-100'
+                        : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 hover:bg-blue-50 dark:hover:bg-gray-700'
                     }`}
                     style={{ 
                       animationName: 'fadeInUp',
@@ -374,8 +376,8 @@ export default function Home() {
                       opacity: 0
                     }}
                   >
-                    <h3 className="font-semibold text-gray-900">{post.name}</h3>
-                    <p className="text-sm text-gray-700">Pincode: {post.pincode}</p>
+                    <h3 className="font-semibold text-gray-900 dark:text-gray-100">{post.name}</h3>
+                    <p className="text-sm text-gray-700 dark:text-gray-300">Pincode: {post.pincode}</p>
                   </div>
                 ))}
               </>
