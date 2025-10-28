@@ -1,3 +1,4 @@
+from app.cache import cache_response, test_redis_connection, get_cache_stats
 from sqlalchemy import select
 from fastapi import FastAPI, Depends, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -91,6 +92,10 @@ async def startup_event():
     logger.info("📊 Rate limiting: Enabled")
     logger.info("🔒 CORS: Configured")
     logger.info("📝 Logging: Active")
+    if test_redis_connection():
+        logger.info("💾 Redis caching: Enabled")
+    else:
+        logger.warning("⚠️ Redis caching: Disabled (connection failed)")
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -133,6 +138,7 @@ async def read_posts(
 
 @app.get("/posts/pincode/{pincode}")
 @limiter.limit("100/minute")
+@cache_response(ttl=600, key_prefix="pincode")
 async def get_post_by_pincode(
     request: Request,
     pincode: str,
@@ -196,6 +202,45 @@ async def search_posts(
     except Exception as e:
         logger.error(f"Unexpected error in search_posts: {str(e)}", exc_info=True)
         raise AISearchException(f"Search failed: {str(e)}")
+    
+@app.get("/posts/fulltext-search")
+@limiter.limit("60/minute")
+@cache_response(ttl=300, key_prefix="fulltext")  
+async def fulltext_search_posts(
+    request: Request,
+    q: str = Query(..., min_length=1, description="Search query"),
+    limit: int = Query(default=20, le=100),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Lightning-fast full-text search using PostgreSQL GIN index.
+    Searches across office names, pincodes, districts, states, divisions, regions, and circles.
+    Much faster than AI search for simple text matching.
+    
+    Examples:
+    - /posts/fulltext-search?q=Mumbai
+    - /posts/fulltext-search?q=400001
+    - /posts/fulltext-search?q=Delhi post office
+    """
+    try:
+        logger.info(f"Full-text search query: '{q}' with limit: {limit}")
+        
+        results = await crud.fulltext_search_posts(db, query=q, limit=limit)
+        
+        logger.info(f"Full-text search completed - found {len(results)} results for query: '{q}'")
+        
+        return {
+            "query": q,
+            "count": len(results),
+            "results": results
+        }
+        
+    except SQLAlchemyError as e:
+        logger.error(f"Database error in fulltext_search_posts: {str(e)}")
+        raise DatabaseConnectionException("Failed to perform full-text search")
+    except Exception as e:
+        logger.error(f"Unexpected error in fulltext_search_posts: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 @app.get("/posts/hybrid-search")
 @limiter.limit("60/minute")  # Geospatial - moderate limit
@@ -300,7 +345,20 @@ async def get_stats(
         logger.error(f"Unexpected error in get_stats: {str(e)}", exc_info=True)
         raise
 
+@app.get("/cache/stats")
+@limiter.limit("20/minute")
+async def get_cache_statistics(request: Request):
+    """Get Redis cache statistics"""
+    try:
+        logger.info("Fetching cache statistics")
+        stats = get_cache_stats()
+        return stats
+    except Exception as e:
+        logger.error(f"Error fetching cache stats: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/locations/states/")
+@cache_response(ttl=3600, key_prefix="states")
 async def get_states(db: AsyncSession = Depends(get_db)):
     """Get list of all unique states"""
     try:

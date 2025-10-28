@@ -1,3 +1,4 @@
+from sqlalchemy import select, func, or_, String
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from . import db_models
@@ -99,3 +100,97 @@ async def get_post_ids_within_radius(db: AsyncSession, lat: float, lon: float, r
     
     # Return the list of IDs
     return list(post_ids)
+
+async def fulltext_search_posts(db: AsyncSession, query: str, limit: int = 20):
+    """
+    Performs lightning-fast full-text search with fallback to ILIKE for short queries.
+    Searches across office_name, pincode, district, state_name, division, region, and circle.
+    
+    Args:
+        db (AsyncSession): The database session.
+        query (str): The search query (e.g., "Mumbai 400001" or "mum")
+        limit (int): Maximum number of results to return.
+    
+    Returns:
+        List[dict]: List of matching delivery posts as dictionaries, ranked by relevance.
+    """
+    from sqlalchemy import func, or_
+    
+    search_term = query.strip()
+    
+    # For very short queries (1-2 chars), use simple ILIKE pattern matching
+    if len(search_term) <= 2:
+        pattern = f"%{search_term}%"
+        result = await db.execute(
+            select(db_models.DeliveryPost)
+            .where(
+                or_(
+                    db_models.DeliveryPost.office_name.ilike(pattern),
+                    db_models.DeliveryPost.district.ilike(pattern),
+                    db_models.DeliveryPost.state_name.ilike(pattern),
+                    func.cast(db_models.DeliveryPost.pincode, String).ilike(pattern)
+                )
+            )
+            .limit(limit)
+        )
+    else:
+        # For longer queries, use full-text search with prefix matching
+        try:
+            # Split words and add :* for prefix matching
+            words = search_term.lower().split()
+            tsquery_string = ' & '.join([f"{word}:*" for word in words])
+            
+            result = await db.execute(
+                select(db_models.DeliveryPost)
+                .where(
+                    db_models.DeliveryPost.search_vector.op('@@')(
+                        func.to_tsquery('english', tsquery_string)
+                    )
+                )
+                .order_by(
+                    func.ts_rank(
+                        db_models.DeliveryPost.search_vector,
+                        func.to_tsquery('english', tsquery_string)
+                    ).desc()
+                )
+                .limit(limit)
+            )
+        except Exception as e:
+            # Fallback to ILIKE if full-text search fails
+            print(f"Full-text search error: {e}, falling back to ILIKE")
+            pattern = f"%{search_term}%"
+            result = await db.execute(
+                select(db_models.DeliveryPost)
+                .where(
+                    or_(
+                        db_models.DeliveryPost.office_name.ilike(pattern),
+                        db_models.DeliveryPost.district.ilike(pattern),
+                        db_models.DeliveryPost.state_name.ilike(pattern)
+                    )
+                )
+                .limit(limit)
+            )
+    
+    posts = result.scalars().all()
+    
+    # Convert to dictionaries
+    return [
+        {
+            "id": post.id,
+            "office_name": post.office_name,
+            "pincode": post.pincode,
+            "office_type": post.office_type,
+            "delivery_status": post.delivery_status,
+            "division_name": post.division_name,
+            "region_name": post.region_name,
+            "circle_name": post.circle_name,
+            "district": post.district,
+            "state_name": post.state_name,
+            "latitude": post.latitude,
+            "longitude": post.longitude
+        }
+        for post in posts
+    ]
+
+
+

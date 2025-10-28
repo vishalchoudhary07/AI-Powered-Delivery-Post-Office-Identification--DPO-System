@@ -1,10 +1,13 @@
 from sqlalchemy import Column, Integer, String, Double
+from sqlalchemy.dialects.postgresql import TSVECTOR
 from geoalchemy2 import Geometry
 from geoalchemy2 import Geography
 from .database import Base
 
+
 class DeliveryPost(Base):
     __tablename__ = "delivery_posts"
+
 
     id = Column(Integer, primary_key=True, index=True)
     office_name = Column(String)
@@ -20,3 +23,5 @@ class DeliveryPost(Base):
     longitude = Column(Double)
     # This tells SQLAlchemy how to handle the PostGIS location column
     location = Column(Geography(geometry_type='POINT', srid=4326))
+    # Full-text search vector column (created by PostgreSQL)
+    search_vector = Column(TSVECTOR)

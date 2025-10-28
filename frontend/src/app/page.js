@@ -110,34 +110,53 @@ export default function Home() {
   }, []);
 
   const handleSearch = useCallback(async () => {
-    if (query.trim() === '') {
-      setSearchResults([]);
-      setResults([]);
-      setSelectedPost(null);
-      return;
+  if (query.trim() === '') {
+    setSearchResults([]);
+    setResults([]);
+    setSelectedPost(null);
+    return;
+  }
+
+  setIsLoading(true);
+  setError(null);
+
+  try {
+    // Use fast full-text search endpoint (no location required)
+    const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/posts/fulltext-search?q=${encodeURIComponent(query)}&limit=20`;
+    const response = await fetch(apiUrl);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('API Error:', response.status, errorText);
+      throw new Error(`Search failed: ${response.status}`);
     }
 
-    if (!userLocation) {
-      setError("Please enable location access for search");
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/posts/hybrid-search/?q=${encodeURIComponent(query)}&lat=${userLocation.lat}&lon=${userLocation.lon}&radius_km=500`;
-      const response = await fetch(apiUrl);
+    const data = await response.json();
+    // The new endpoint returns { query, count, results }
+    const posts = data.results || [];
+    
+    // If user location is available, calculate distances
+    if (userLocation && posts.length > 0) {
+      const postsWithDistance = posts.map(post => {
+        if (post.latitude && post.longitude) {
+          const distanceInMeters = getDistance(
+            { latitude: userLocation.lat, longitude: userLocation.lon },
+            { latitude: post.latitude, longitude: post.longitude }
+          );
+          return { ...post, distance_km: distanceInMeters / 1000 };
+        }
+        return post;
+      });
       
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('API Error:', response.status, errorText);
-        throw new Error(`Search failed: ${response.status}`);
+      // Sort by distance if available
+      postsWithDistance.sort((a, b) => (a.distance_km || 999999) - (b.distance_km || 999999));
+      
+      setSearchResults(postsWithDistance);
+      setResults(postsWithDistance);
+      if (postsWithDistance.length > 0) {
+        setSelectedPost(postsWithDistance[0]);
       }
-
-      const data = await response.json();
-      const posts = Array.isArray(data) ? data : (data.results || data.posts || []);
-      
+    } else {
       setSearchResults(posts);
       setResults(posts);
       if (posts.length > 0) {
@@ -146,16 +165,18 @@ export default function Home() {
         setSelectedPost(null);
         setError("No results found. Try a different search term.");
       }
-    } catch (error) {
-      console.error('Search failed:', error);
-      setError(`Search failed: ${error.message}`);
-      setSearchResults([]);
-      setResults([]);
-      setSelectedPost(null);
-    } finally {
-      setIsLoading(false);
     }
-  }, [query, userLocation]);
+  } catch (error) {
+    console.error('Search failed:', error);
+    setError(`Search failed: ${error.message}`);
+    setSearchResults([]);
+    setResults([]);
+    setSelectedPost(null);
+  } finally {
+    setIsLoading(false);
+  }
+}, [query, userLocation]);
+
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -268,10 +289,11 @@ export default function Home() {
             )}
 
             {locationError && (
-              <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-400 dark:border-yellow-600 rounded text-yellow-900 dark:text-yellow-300">
-                {locationError}
-              </div>
-            )}
+  <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-400 dark:border-blue-600 rounded text-blue-900 dark:text-blue-300">
+    ℹ️ {locationError} Search will work without distance calculations.
+  </div>
+)}
+
 
             {error && (
               <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-400 dark:border-red-600 rounded text-red-900 dark:text-red-300">
@@ -301,7 +323,7 @@ export default function Home() {
                   opacity: 0
                 }}
               >
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100">{post.name}</h3>
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100">{post.office_name}</h3>
                 <p className="text-sm text-gray-700 dark:text-gray-300">Pincode: {post.pincode}</p>
                 <p className="text-sm text-gray-700 dark:text-gray-300">{post.district}, {post.state_name || post.state}</p>
                 {post.distance_km && (
@@ -376,7 +398,7 @@ export default function Home() {
                       opacity: 0
                     }}
                   >
-                    <h3 className="font-semibold text-gray-900 dark:text-gray-100">{post.name}</h3>
+                    <h3 className="font-semibold text-gray-900 dark:text-gray-100">{post.office_name}</h3>
                     <p className="text-sm text-gray-700 dark:text-gray-300">Pincode: {post.pincode}</p>
                   </div>
                 ))}
