@@ -1,8 +1,19 @@
+# backend/app/ai_search.py
+
 from sentence_transformers import SentenceTransformer
 import numpy as np
 from functools import lru_cache
-import pickle
 import os
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from geoalchemy2.functions import ST_DWithin
+from sqlalchemy import func
+from app.db_models import DeliveryPost
+from typing import List, Dict
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class SearchService:
     def __init__(self, model_name='all-MiniLM-L6-v2', use_fp16=True):
@@ -31,7 +42,7 @@ class SearchService:
     
     def load_embeddings(self):
         """Load pre-computed embeddings from disk"""
-        embeddings_file = 'post_embeddings.pkl'
+        embeddings_file = 'post_embeddings.npz'  
         
         if not os.path.exists(embeddings_file):
             raise FileNotFoundError(
@@ -41,10 +52,10 @@ class SearchService:
         
         try:
             print(f"Loading embeddings from {embeddings_file}...")
-            with open(embeddings_file, 'rb') as f:
-                data = pickle.load(f)
-                self.embeddings = data['embeddings']
-                self.post_ids = data['post_ids']
+            
+            data = np.load(embeddings_file)
+            self.embeddings = data['embeddings']
+            self.post_ids = data['ids']
             
             print(f"✓ Loaded {len(self.post_ids)} post embeddings")
             print(f"✓ Embedding shape: {self.embeddings.shape}")
@@ -97,3 +108,150 @@ class SearchService:
         """Clear the query embedding cache"""
         self.get_query_embedding.cache_clear()
         print("✓ Query cache cleared")
+
+
+# ========================================
+# Initialize search service (singleton)
+# ========================================
+try:
+    search_service = SearchService(use_fp16=True)
+    logger.info("✓ AI Search Service initialized successfully")
+except Exception as e:
+    search_service = None
+    logger.error(f"⚠ Failed to initialize AI Search: {e}")
+
+
+# ========================================
+# API Functions for FastAPI endpoints
+# ========================================
+
+async def search_posts_by_query(db: AsyncSession, query: str, limit: int = 10) -> List[Dict]:
+    """
+    AI-powered semantic search for post offices.
+    
+    Args:
+        db: Database session
+        query: Search query text
+        limit: Maximum number of results
+        
+    Returns:
+        List of post office dictionaries
+    """
+    if not search_service:
+        raise Exception("AI search service is not available. Please generate embeddings first.")
+    
+    try:
+        # Get similar post IDs using AI
+        similar_post_ids = search_service.find_similar(query, top_k=limit)
+        
+        if not similar_post_ids:
+            return []
+        
+        # Fetch posts from database
+        result = await db.execute(
+            select(DeliveryPost)
+            .where(DeliveryPost.id.in_(similar_post_ids))
+        )
+        posts = result.scalars().all()
+        
+        # Convert to dict and maintain order
+        post_dict = {post.id: post for post in posts}
+        ordered_posts = [post_dict[post_id] for post_id in similar_post_ids if post_id in post_dict]
+        
+        # Convert to response format
+        return [
+            {
+                "id": p.id,
+                "office_name": p.office_name,
+                "name": p.office_name,
+                "pincode": p.pincode,
+                "district": p.district,
+                "state": p.state_name,
+                "state_name": p.state_name,
+                "latitude": p.latitude,
+                "longitude": p.longitude,
+                "office_type": p.office_type,
+                "delivery_status": p.delivery_status
+            }
+            for p in ordered_posts
+        ]
+    except Exception as e:
+        logger.error(f"AI search failed: {e}")
+        raise
+
+
+async def hybrid_search_posts(
+    db: AsyncSession,
+    query: str,
+    user_lat: float,
+    user_lon: float,
+    radius_km: float = 50,
+    limit: int = 10
+) -> List[Dict]:
+    """
+    Hybrid search: AI semantic search + client-side distance filtering.
+    """
+    if not search_service:
+        raise Exception("AI search service is not available.")
+    
+    try:
+        # Get more candidates from AI search
+        similar_post_ids = search_service.find_similar(query, top_k=limit * 5)
+        
+        print(f"🔍 AI found {len(similar_post_ids)} similar post IDs")
+        
+        if not similar_post_ids:
+            return []
+        
+        # Fetch posts from database (without geospatial filtering)
+        result = await db.execute(
+            select(DeliveryPost)
+            .where(DeliveryPost.id.in_(similar_post_ids))
+        )
+        posts = result.scalars().all()
+        
+        print(f"🔍 Database returned {len(posts)} posts")
+        
+        # Calculate distances and filter client-side
+        results_with_distance = []
+        for post in posts:
+            if post.latitude and post.longitude:
+                # Calculate distance using Haversine formula
+                from math import radians, cos, sin, asin, sqrt
+                
+                lon1, lat1, lon2, lat2 = map(radians, [user_lon, user_lat, post.longitude, post.latitude])
+                dlon = lon2 - lon1
+                dlat = lat2 - lat1
+                a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+                c = 2 * asin(sqrt(a))
+                km = 6371 * c  # Earth radius in kilometers
+                
+                if km <= radius_km:
+                    results_with_distance.append({
+                        "id": post.id,
+                        "office_name": post.office_name,
+                        "name": post.office_name,
+                        "pincode": post.pincode,
+                        "district": post.district,
+                        "state": post.state_name,
+                        "state_name": post.state_name,
+                        "latitude": post.latitude,
+                        "longitude": post.longitude,
+                        "office_type": post.office_type,
+                        "delivery_status": post.delivery_status,
+                        "distance_km": km
+                    })
+        
+        # Sort by distance and return top results
+        results_with_distance.sort(key=lambda x: x['distance_km'])
+        
+        print(f"🔍 After distance filtering: {len(results_with_distance)} posts within {radius_km}km")
+        
+        return results_with_distance[:limit]
+        
+    except Exception as e:
+        logger.error(f"Hybrid search failed: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
+

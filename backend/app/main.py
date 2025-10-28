@@ -1,3 +1,4 @@
+from sqlalchemy import select
 from fastapi import FastAPI, Depends, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
@@ -8,9 +9,10 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 import logging
 from typing import Optional
+from app.db_models import DeliveryPost
 
 from app.database import get_db
-from app import crud, models
+from app import crud
 from app.logging_config import setup_logging
 from app.middleware import log_requests
 from app.exceptions import (
@@ -301,23 +303,33 @@ async def get_stats(
 @app.get("/locations/states/")
 async def get_states(db: AsyncSession = Depends(get_db)):
     """Get list of all unique states"""
-    result = await db.execute(
-        select(PostOffice.state).distinct().order_by(PostOffice.state)
-    )
-    states = result.scalars().all()
-    return {"states": states}
+    try:
+        result = await db.execute(
+            select(DeliveryPost.state_name).distinct().order_by(DeliveryPost.state_name)  
+        )
+        states = result.scalars().all()
+        return {"states": states}
+    except Exception as e:
+        logger.error(f"Error fetching states: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/locations/districts/")
 async def get_districts(state: str, db: AsyncSession = Depends(get_db)):
     """Get districts for a specific state"""
-    result = await db.execute(
-        select(PostOffice.district)
-        .where(PostOffice.state == state)
-        .distinct()
-        .order_by(PostOffice.district)
-    )
-    districts = result.scalars().all()
-    return {"districts": districts}
+    try:
+        result = await db.execute(
+            select(DeliveryPost.district)  
+            .where(DeliveryPost.state_name == state)  
+            .distinct()
+            .order_by(DeliveryPost.district)  
+        )
+        districts = result.scalars().all()
+        return {"districts": districts}
+    except Exception as e:
+        logger.error(f"Error fetching districts: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/locations/posts/")
 async def get_posts_by_district(
@@ -327,11 +339,25 @@ async def get_posts_by_district(
     db: AsyncSession = Depends(get_db)
 ):
     """Get all post offices in a specific district"""
-    result = await db.execute(
-        select(PostOffice)
-        .where(PostOffice.district == district)
-        .offset(skip)
-        .limit(limit)
-    )
-    posts = result.scalars().all()
-    return {"posts": posts, "count": len(posts)}
+    try:
+        result = await db.execute(
+            select(DeliveryPost)  
+            .where(DeliveryPost.district == district)  
+            .offset(skip)
+            .limit(limit)
+        )
+        posts = result.scalars().all()
+        return {"posts": [
+            {
+                "id": p.id,
+                "name": p.office_name,  
+                "pincode": p.pincode,
+                "district": p.district,
+                "state": p.state_name,  
+                "latitude": p.latitude,
+                "longitude": p.longitude
+            } for p in posts
+        ], "count": len(posts)}
+    except Exception as e:
+        logger.error(f"Error fetching posts by district: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))

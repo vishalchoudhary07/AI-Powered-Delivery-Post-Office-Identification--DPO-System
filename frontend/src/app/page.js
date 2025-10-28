@@ -19,14 +19,19 @@ export default function Home() {
   const [selectedState, setSelectedState] = useState(null);
   const [districts, setDistricts] = useState([]);
   const [selectedDistrict, setSelectedDistrict] = useState(null);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     const fetchStates = async () => {
       try {
         const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/locations/states/`);
+        if (!response.ok) throw new Error('Failed to fetch states');
         const data = await response.json();
-        setStates(data);
-      } catch (error) { console.error("Failed to fetch states:", error); }
+        setStates(data.states || []);
+      } catch (error) { 
+        console.error("Failed to fetch states:", error);
+        setError("Failed to load states");
+      }
     };
     fetchStates();
   }, []);
@@ -35,12 +40,18 @@ export default function Home() {
     if (!selectedState) return;
     const fetchDistricts = async () => {
       setIsLoading(true);
+      setError(null);
       try {
         const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/locations/districts/?state=${encodeURIComponent(selectedState)}`);
+        if (!response.ok) throw new Error('Failed to fetch districts');
         const data = await response.json();
-        setDistricts(data);
-      } catch (error) { console.error("Failed to fetch districts:", error); }
-      finally { setIsLoading(false); }
+        setDistricts(data.districts || []);
+      } catch (error) { 
+        console.error("Failed to fetch districts:", error);
+        setError("Failed to load districts");
+      } finally { 
+        setIsLoading(false); 
+      }
     };
     fetchDistricts();
   }, [selectedState]);
@@ -49,12 +60,15 @@ export default function Home() {
     if (!selectedDistrict) return;
     const fetchPosts = async () => {
       setIsLoading(true);
+      setError(null);
       try {
         const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/locations/posts/?district=${encodeURIComponent(selectedDistrict)}`);
+        if (!response.ok) throw new Error('Failed to fetch posts');
         let data = await response.json();
+        let posts = data.posts || [];
         
-        if (userLocation && data.length > 0) {
-          data = data.map(post => {
+        if (userLocation && posts.length > 0) {
+          posts = posts.map(post => {
             if (post.latitude && post.longitude) {
               const distanceInMeters = getDistance(
                 { latitude: userLocation.lat, longitude: userLocation.lon },
@@ -66,11 +80,15 @@ export default function Home() {
           });
         }
         
-        setResults(data);
-        if (data.length > 0) setSelectedPost(data[0]);
+        setResults(posts);
+        if (posts.length > 0) setSelectedPost(posts[0]);
 
-      } catch (error) { console.error("Failed to fetch posts:", error); }
-      finally { setIsLoading(false); }
+      } catch (error) { 
+        console.error("Failed to fetch posts:", error);
+        setError("Failed to load post offices");
+      } finally { 
+        setIsLoading(false); 
+      }
     };
     fetchPosts();
   }, [selectedDistrict, userLocation]);
@@ -79,7 +97,7 @@ export default function Home() {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => setUserLocation({ lat: position.coords.latitude, lon: position.coords.longitude }),
-        (error) => setLocationError("Location access denied.")
+        (error) => setLocationError("Location access denied. Search results may be limited.")
       );
     } else {
       setLocationError("Geolocation is not supported.");
@@ -87,22 +105,57 @@ export default function Home() {
   }, []);
 
   const handleSearch = useCallback(async () => {
-    if (query.trim() === '' || !userLocation) return;
+    if (query.trim() === '') {
+      setResults([]);
+      setSelectedPost(null);
+      return;
+    }
+    
+    if (!userLocation) {
+      setError("Please enable location access for search");
+      return;
+    }
+
     setIsLoading(true);
+    setError(null);
+    
     try {
-      const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/posts/hybrid-search/?q=${encodeURIComponent(query)}&lat=${userLocation.lat}&lon=${userLocation.lon}`;
+      // ✅ CHANGED: Added radius_km=500 parameter
+      const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/posts/hybrid-search/?q=${encodeURIComponent(query)}&lat=${userLocation.lat}&lon=${userLocation.lon}&radius_km=500`;
       const response = await fetch(apiUrl);
-      if (!response.ok) throw new Error('Failed to fetch');
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('API Error:', response.status, errorText);
+        throw new Error(`Search failed: ${response.status}`);
+      }
+      
       const data = await response.json();
-      setResults(data);
-      if (data.length > 0) setSelectedPost(data[0]);
-      else setSelectedPost(null);
-    } catch (error) { console.error('Search failed:', error); }
-    finally { setIsLoading(false); }
+      
+      // Handle both array response and object with results property
+      const posts = Array.isArray(data) ? data : (data.results || data.posts || []);
+      
+      setResults(posts);
+      if (posts.length > 0) {
+        setSelectedPost(posts[0]);
+      } else {
+        setSelectedPost(null);
+        setError("No results found. Try a different search term.");
+      }
+    } catch (error) { 
+      console.error('Search failed:', error);
+      setError(`Search failed: ${error.message}`);
+      setResults([]);
+      setSelectedPost(null);
+    } finally { 
+      setIsLoading(false); 
+    }
   }, [query, userLocation]);
 
   useEffect(() => {
-    const timer = setTimeout(() => { if (query.trim() !== '') handleSearch(); }, 500);
+    const timer = setTimeout(() => { 
+      if (query.trim() !== '') handleSearch(); 
+    }, 500);
     return () => clearTimeout(timer);
   }, [query, handleSearch]);
   
@@ -112,6 +165,7 @@ export default function Home() {
     setDistricts([]);
     setResults([]);
     setSelectedPost(null);
+    setError(null);
   };
 
   const ListItem = ({ text, onClick }) => (
@@ -132,14 +186,19 @@ export default function Home() {
       style={{ background: '#ffffff', border: selectedPost?.id === post.id ? '2px solid #007bff' : '1px solid #e0e0e0', borderRadius: '8px', padding: '16px', marginBottom: '12px', cursor: 'pointer' }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <strong style={{ color: '#1a1a1a', paddingRight: '10px' }}>{post.office_name}</strong>
+        <strong style={{ color: '#1a1a1a', paddingRight: '10px' }}>{post.office_name || post.name}</strong>
         {post.distance_km !== undefined && (
           <span style={{ color: '#007bff', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
             {post.distance_km.toFixed(1)} km
           </span>
         )}
       </div>
-      <p style={{ margin: '8px 0 0', color: '#4a4a4a' }}>{post.address}</p>
+      <p style={{ margin: '4px 0 0', color: '#666', fontSize: '14px' }}>
+        Pincode: {post.pincode}
+      </p>
+      <p style={{ margin: '4px 0 0', color: '#666', fontSize: '14px' }}>
+        {post.district}, {post.state_name || post.state}
+      </p>
     </div>
   );
 
@@ -147,31 +206,47 @@ export default function Home() {
     <main style={{ display: 'flex', height: '100vh', fontFamily: 'sans-serif' }}>
       <div style={{ width: '400px', padding: '20px', overflowY: 'auto', background: '#f7f7f7' }}>
         <h1 style={{ color: '#1a1a1a', marginBottom: '20px' }}>Delivery Post Office Finder</h1>
+        
         <div style={{ display: 'flex', marginBottom: '20px', borderBottom: '1px solid #ccc' }}>
           <button onClick={() => { setView('search'); resetBrowse(); }} style={{ flex: 1, padding: '10px', background: view === 'search' ? '#007bff' : 'transparent', color: view === 'search' ? '#fff' : '#333', border: 'none', cursor: 'pointer', fontSize: '16px' }}>Search</button>
-          <button onClick={() => { setView('browse'); setQuery(''); setResults([]); setSelectedPost(null); }} style={{ flex: 1, padding: '10px', background: view === 'browse' ? '#007bff' : 'transparent', color: view === 'browse' ? '#fff' : '#333', border: 'none', cursor: 'pointer', fontSize: '16px' }}>Browse</button>
+          <button onClick={() => { setView('browse'); setQuery(''); setResults([]); setSelectedPost(null); setError(null); }} style={{ flex: 1, padding: '10px', background: view === 'browse' ? '#007bff' : 'transparent', color: view === 'browse' ? '#fff' : '#333', border: 'none', cursor: 'pointer', fontSize: '16px' }}>Browse</button>
         </div>
+
         {view === 'search' ? (
           <>
-            <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by area..." style={{ width: '100%', padding: '12px', fontSize: '16px', marginBottom: '20px', border: '1px solid #ccc', borderRadius: '8px', boxSizing: 'border-box', color: '#1a1a1a' }} />
-            {/* --- THIS IS THE FIX --- */}
-            {isLoading && <p style={{ color: '#4a4a4a', margin: '10px 0', fontWeight: 'bold' }}>Loading...</p>}
-            {locationError && <p style={{color: 'red'}}>{locationError}</p>}
+            <input 
+              type="text" 
+              value={query} 
+              onChange={(e) => setQuery(e.target.value)} 
+              placeholder="Search by area..." 
+              style={{ width: '100%', padding: '12px', fontSize: '16px', marginBottom: '20px', border: '1px solid #ccc', borderRadius: '8px', boxSizing: 'border-box', color: '#1a1a1a' }} 
+            />
+            
+            {isLoading && <p style={{ color: '#007bff', margin: '10px 0', fontWeight: 'bold' }}>Loading...</p>}
+            {locationError && <p style={{color: '#ff6b6b', marginBottom: '15px', padding: '10px', background: '#fff', borderRadius: '8px', fontSize: '14px'}}>{locationError}</p>}
+            {error && <p style={{color: '#ff6b6b', marginBottom: '15px', padding: '10px', background: '#fff', borderRadius: '8px', fontSize: '14px'}}>{error}</p>}
+            
             <div>
+              {results.length === 0 && query && !isLoading && !error && (
+                <p style={{ color: '#666', textAlign: 'center', marginTop: '40px' }}>No results found</p>
+              )}
               {results.map((post) => <PostResultCard key={post.id} post={post} />)}
             </div>
           </>
         ) : (
           <>
-            {/* --- AND HERE AS WELL --- */}
-            {isLoading && <p style={{ color: '#4a4a4a', margin: '10px 0', fontWeight: 'bold' }}>Loading...</p>}
+            {isLoading && <p style={{ color: '#007bff', margin: '10px 0', fontWeight: 'bold' }}>Loading...</p>}
+            {error && <p style={{color: '#ff6b6b', marginBottom: '15px', padding: '10px', background: '#fff', borderRadius: '8px', fontSize: '14px'}}>{error}</p>}
+            
             {!selectedState && states.map(s => <ListItem key={s} text={s} onClick={() => setSelectedState(s)} />)}
+            
             {selectedState && !selectedDistrict && (
               <>
                 <button onClick={() => { setSelectedState(null); setDistricts([]); }} style={backButtonStyle}>&larr; Back to States</button>
                 {districts.map(d => <ListItem key={d} text={d} onClick={() => setSelectedDistrict(d)} />)}
               </>
             )}
+            
             {selectedDistrict && (
               <>
                 <button onClick={() => { setSelectedDistrict(null); setResults([]); setSelectedPost(null); }} style={backButtonStyle}>&larr; Back to Districts</button>
