@@ -32,7 +32,7 @@ An intelligent full-stack application for finding Indian postal delivery offices
 **Frontend:**
 - Next.js 15 (App Router)
 - React 19
-- Mapbox GL / MapTiler
+- Mapliber/ MapTiler
 - TailwindCSS 4
 
 ### System Architecture
