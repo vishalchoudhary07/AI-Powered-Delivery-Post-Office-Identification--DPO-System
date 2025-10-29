@@ -99,7 +99,7 @@ export default function MapComponent({ searchResults, selectedPost }) {
 
       wrapper.appendChild(el);
 
-      // ✅ FIXED: Popup with proper dark mode support using classes
+      // ✅ FIXED: Changed post.name to post.office_name
       const stateName = post.state_name || post.state || '';
       
       const popup = new maplibregl.Popup({ 
@@ -109,7 +109,7 @@ export default function MapComponent({ searchResults, selectedPost }) {
         closeOnClick: false
       }).setHTML(
         `<div class="popup-content-wrapper">
-          <h3 class="popup-title">${post.name}</h3>
+          <h3 class="popup-title">${post.office_name || post.name || 'Post Office'}</h3>
           <div class="popup-details">
             <p class="popup-detail">
               <strong class="popup-label">📮 Pincode:</strong> 

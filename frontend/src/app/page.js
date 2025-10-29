@@ -110,73 +110,68 @@ export default function Home() {
   }, []);
 
   const handleSearch = useCallback(async () => {
-  if (query.trim() === '') {
-    setSearchResults([]);
-    setResults([]);
-    setSelectedPost(null);
-    return;
-  }
-
-  setIsLoading(true);
-  setError(null);
-
-  try {
-    // Use fast full-text search endpoint (no location required)
-    const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/posts/fulltext-search?q=${encodeURIComponent(query)}&limit=20`;
-    const response = await fetch(apiUrl);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('API Error:', response.status, errorText);
-      throw new Error(`Search failed: ${response.status}`);
+    if (query.trim() === '') {
+      setSearchResults([]);
+      setResults([]);
+      setSelectedPost(null);
+      return;
     }
 
-    const data = await response.json();
-    // The new endpoint returns { query, count, results }
-    const posts = data.results || [];
-    
-    // If user location is available, calculate distances
-    if (userLocation && posts.length > 0) {
-      const postsWithDistance = posts.map(post => {
-        if (post.latitude && post.longitude) {
-          const distanceInMeters = getDistance(
-            { latitude: userLocation.lat, longitude: userLocation.lon },
-            { latitude: post.latitude, longitude: post.longitude }
-          );
-          return { ...post, distance_km: distanceInMeters / 1000 };
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/posts/fulltext-search?q=${encodeURIComponent(query)}&limit=20`;
+      const response = await fetch(apiUrl);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('API Error:', response.status, errorText);
+        throw new Error(`Search failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const posts = data.results || [];
+      
+      if (userLocation && posts.length > 0) {
+        const postsWithDistance = posts.map(post => {
+          if (post.latitude && post.longitude) {
+            const distanceInMeters = getDistance(
+              { latitude: userLocation.lat, longitude: userLocation.lon },
+              { latitude: post.latitude, longitude: post.longitude }
+            );
+            return { ...post, distance_km: distanceInMeters / 1000 };
+          }
+          return post;
+        });
+        
+        postsWithDistance.sort((a, b) => (a.distance_km || 999999) - (b.distance_km || 999999));
+        
+        setSearchResults(postsWithDistance);
+        setResults(postsWithDistance);
+        if (postsWithDistance.length > 0) {
+          setSelectedPost(postsWithDistance[0]);
         }
-        return post;
-      });
-      
-      // Sort by distance if available
-      postsWithDistance.sort((a, b) => (a.distance_km || 999999) - (b.distance_km || 999999));
-      
-      setSearchResults(postsWithDistance);
-      setResults(postsWithDistance);
-      if (postsWithDistance.length > 0) {
-        setSelectedPost(postsWithDistance[0]);
-      }
-    } else {
-      setSearchResults(posts);
-      setResults(posts);
-      if (posts.length > 0) {
-        setSelectedPost(posts[0]);
       } else {
-        setSelectedPost(null);
-        setError("No results found. Try a different search term.");
+        setSearchResults(posts);
+        setResults(posts);
+        if (posts.length > 0) {
+          setSelectedPost(posts[0]);
+        } else {
+          setSelectedPost(null);
+          setError("No results found. Try a different search term.");
+        }
       }
+    } catch (error) {
+      console.error('Search failed:', error);
+      setError(`Search failed: ${error.message}`);
+      setSearchResults([]);
+      setResults([]);
+      setSelectedPost(null);
+    } finally {
+      setIsLoading(false);
     }
-  } catch (error) {
-    console.error('Search failed:', error);
-    setError(`Search failed: ${error.message}`);
-    setSearchResults([]);
-    setResults([]);
-    setSelectedPost(null);
-  } finally {
-    setIsLoading(false);
-  }
-}, [query, userLocation]);
-
+  }, [query, userLocation]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -189,13 +184,6 @@ export default function Home() {
   const handleQueryChange = (e) => {
     setQuery(e.target.value);
     setIsTyping(true);
-  };
-
-  const resetBrowse = () => {
-    setSelectedState(null);
-    setSelectedDistrict(null);
-    setDistricts([]);
-    setBrowseResults([]);
   };
 
   const handleViewChange = (newView) => {
@@ -222,194 +210,268 @@ export default function Home() {
     setError(null);
   };
 
+  // Skeleton loader component
+  const SkeletonLoader = () => (
+    <div className="space-y-3">
+      {[1, 2, 3].map((i) => (
+        <div key={i} className="p-4 border border-gray-200 dark:border-gray-700 rounded-xl animate-pulse bg-white dark:bg-gray-800">
+          <div className="h-5 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-3"></div>
+          <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2 mb-2"></div>
+          <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-2/3"></div>
+        </div>
+      ))}
+    </div>
+  );
+
+  // Post card component - NO STATUS BADGE
+  const PostCard = ({ post, isSelected, onClick }) => (
+    <div
+      onClick={onClick}
+      className={`group relative p-4 mb-3 border rounded-xl cursor-pointer transition-all duration-300 transform hover:-translate-y-0.5 ${
+        isSelected
+          ? 'border-blue-500 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 shadow-lg ring-2 ring-blue-500/20'
+          : 'border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 bg-white dark:bg-gray-800 hover:shadow-md'
+      }`}
+    >
+      <div className="flex justify-between items-start mb-2">
+        <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-base group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+          {post.office_name || post.name || 'Post Office'}
+        </h3>
+        {isSelected && (
+          <span className="text-blue-600 dark:text-blue-400 text-sm">✓</span>
+        )}
+      </div>
+      
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-gray-500 dark:text-gray-400">📮</span>
+          <span className="font-medium text-gray-700 dark:text-gray-300">{post.pincode}</span>
+        </div>
+        
+        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+          <span>📍</span>
+          <span>{post.district}, {post.state_name || post.state}</span>
+        </div>
+
+        {post.distance_km && userLocation && (
+          <a
+            href={`https://www.google.com/maps/dir/?api=1&origin=${userLocation.lat},${userLocation.lon}&destination=${post.latitude},${post.longitude}&travelmode=driving`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-sm text-blue-600 dark:text-blue-400 font-medium hover:text-blue-700 dark:hover:text-blue-300 hover:underline transition-colors mt-1"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span>🗺️</span>
+            <span>{post.distance_km.toFixed(2)} km away</span>
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+          </a>
+        )}
+      </div>
+    </div>
+  );
+
   const ListItem = ({ text, onClick }) => (
     <div
       onClick={onClick}
-      className="p-3 cursor-pointer transition-all duration-200 hover:bg-blue-100 dark:hover:bg-gray-700 hover:translate-x-1 hover:shadow-md rounded-lg border border-transparent hover:border-blue-300 dark:hover:border-blue-600 text-gray-900 dark:text-gray-100"
-      style={{ willChange: 'transform' }}
+      className="p-3.5 cursor-pointer transition-all duration-200 hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 dark:hover:from-blue-900/20 dark:hover:to-indigo-900/20 hover:translate-x-1 rounded-lg border border-transparent hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md text-gray-900 dark:text-gray-100 font-medium"
     >
       {text}
     </div>
   );
 
   return (
-    <div className="flex flex-col md:flex-row h-screen bg-white dark:bg-gray-900">
-      {/* Left Panel */}
-      <div className="md:w-1/3 w-full overflow-auto p-4 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
-        {/* Header with Theme Toggle */}
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-            📮 Delivery Post Office Finder
-          </h1>
-          <ThemeToggle />
-        </div>
+    <div className="flex flex-col md:flex-row h-screen bg-gray-50 dark:bg-gray-950">
+      {/* Left Panel - Enhanced */}
+      <div className="md:w-[420px] w-full flex flex-col bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 shadow-xl">
+        {/* Sticky Header */}
+        <div className="sticky top-0 z-10 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-5 py-4">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
+                <span className="text-xl">📮</span>
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+                  Post Office Finder
+                </h1>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Find nearby delivery points</p>
+              </div>
+            </div>
+            <ThemeToggle />
+          </div>
 
-        {/* View Toggle Buttons */}
-        <div className="flex gap-2 mb-4">
-          <button
-            onClick={() => handleViewChange('search')}
-            className={`px-4 py-2 rounded transition-all duration-200 transform active:scale-95 font-medium ${
-              view === 'search'
-                ? 'bg-blue-600 text-white shadow-lg hover:bg-blue-700'
-                : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-600 hover:shadow-md'
-            }`}
-          >
-            🔍 Search
-          </button>
-          <button
-            onClick={() => handleViewChange('browse')}
-            className={`px-4 py-2 rounded transition-all duration-200 transform active:scale-95 font-medium ${
-              view === 'browse'
-                ? 'bg-blue-600 text-white shadow-lg hover:bg-blue-700'
-                : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-600 hover:shadow-md'
-            }`}
-          >
-            📂 Browse
-          </button>
-        </div>
-
-        {/* Search View */}
-        {view === 'search' && (
-          <div>
-            <input
-              type="text"
-              placeholder="Search post offices..."
-              value={query}
-              onChange={handleQueryChange}
-              className={`w-full p-2 border rounded mb-4 transition-all duration-200 text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 ${
-                isTyping ? 'border-blue-500 ring-2 ring-blue-200 dark:ring-blue-800' : 'border-gray-300 dark:border-gray-600'
+          {/* View Toggle - Modern Pills */}
+          <div className="flex gap-2 p-1 bg-gray-100 dark:bg-gray-800 rounded-lg">
+            <button
+              onClick={() => handleViewChange('search')}
+              className={`flex-1 px-4 py-2.5 rounded-md transition-all duration-200 font-medium text-sm ${
+                view === 'search'
+                  ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-md'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
               }`}
-            />
+            >
+              🔍 Search
+            </button>
+            <button
+              onClick={() => handleViewChange('browse')}
+              className={`flex-1 px-4 py-2.5 rounded-md transition-all duration-200 font-medium text-sm ${
+                view === 'browse'
+                  ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-md'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+              }`}
+            >
+              📂 Browse
+            </button>
+          </div>
+        </div>
 
-            {isLoading && (
-              <div className="flex items-center gap-2 mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-800">
-                <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                <span className="text-blue-800 dark:text-blue-300 font-medium">Loading...</span>
-              </div>
-            )}
-
-            {locationError && (
-  <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-400 dark:border-blue-600 rounded text-blue-900 dark:text-blue-300">
-    ℹ️ {locationError} Search will work without distance calculations.
-  </div>
-)}
-
-
-            {error && (
-              <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-400 dark:border-red-600 rounded text-red-900 dark:text-red-300">
-                {error}
-              </div>
-            )}
-
-            {!isLoading && results.length === 0 && query && (
-              <p className="text-gray-600 dark:text-gray-400">No results found</p>
-            )}
-            
-            {results.map((post, index) => (
-              <div
-                key={post.id}
-                onClick={() => setSelectedPost(post)}
-                className={`p-4 mb-2 border rounded-lg cursor-pointer transition-all duration-300 transform hover:scale-[1.02] hover:shadow-lg ${
-                  selectedPost?.id === post.id
-                    ? 'border-blue-600 bg-blue-100 dark:bg-blue-900/30 shadow-md text-gray-900 dark:text-gray-100'
-                    : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 hover:bg-blue-50 dark:hover:bg-gray-700'
-                }`}
-                style={{ 
-                  animationName: 'fadeInUp',
-                  animationDuration: '0.3s',
-                  animationTimingFunction: 'ease',
-                  animationDelay: `${index * 50}ms`,
-                  animationFillMode: 'forwards',
-                  opacity: 0
-                }}
-              >
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100">{post.office_name}</h3>
-                <p className="text-sm text-gray-700 dark:text-gray-300">Pincode: {post.pincode}</p>
-                <p className="text-sm text-gray-700 dark:text-gray-300">{post.district}, {post.state_name || post.state}</p>
-                {post.distance_km && (
-                  <p className="text-sm text-blue-700 dark:text-blue-400 font-medium mt-1">
-                    📍 {post.distance_km.toFixed(2)} km away
-                  </p>
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-auto px-5 py-4">
+          {/* Search View */}
+          {view === 'search' && (
+            <div>
+              {/* Enhanced Search Bar */}
+              <div className="relative mb-4">
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                  🔍
+                </div>
+                <input
+                  type="text"
+                  placeholder="Search by name, pincode, city..."
+                  value={query}
+                  onChange={handleQueryChange}
+                  className={`w-full pl-10 pr-4 py-3 border rounded-xl transition-all duration-200 text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none ${
+                    isTyping 
+                      ? 'border-blue-500 ring-4 ring-blue-100 dark:ring-blue-900/30 shadow-lg' 
+                      : 'border-gray-300 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-600'
+                  }`}
+                />
+                {isTyping && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                  </div>
                 )}
               </div>
-            ))}
-          </div>
-        )}
 
-        {/* Browse View */}
-        {view === 'browse' && (
-          <div>
-            {isLoading && (
-              <div className="flex items-center gap-2 mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-800">
-                <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                <span className="text-blue-800 dark:text-blue-300 font-medium">Loading...</span>
-              </div>
-            )}
+              {/* Info Banner */}
+              {locationError && (
+                <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg flex items-start gap-2">
+                  <span className="text-blue-600 dark:text-blue-400 mt-0.5">ℹ️</span>
+                  <p className="text-sm text-blue-900 dark:text-blue-300 flex-1">
+                    {locationError} Search will work without distance calculations.
+                  </p>
+                </div>
+              )}
 
-            {error && (
-              <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-400 dark:border-red-600 rounded text-red-900 dark:text-red-300">
-                {error}
-              </div>
-            )}
+              {/* Loading State */}
+              {isLoading && <SkeletonLoader />}
 
-            {!selectedState && states.map(s => (
-              <ListItem key={s} text={s} onClick={() => setSelectedState(s)} />
-            ))}
+              {/* Error State */}
+              {error && !isLoading && (
+                <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-center">
+                  <p className="text-red-900 dark:text-red-300 font-medium">❌ {error}</p>
+                </div>
+              )}
 
-            {selectedState && !selectedDistrict && (
-              <>
-                <button
-                  onClick={() => setSelectedState(null)}
-                  className="mb-4 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded hover:bg-gray-300 dark:hover:bg-gray-600 transition-all duration-200 transform active:scale-95 font-medium"
-                >
-                  ← Back to States
-                </button>
-                <h2 className="text-xl font-bold mb-2 text-gray-900 dark:text-gray-100">{selectedState}</h2>
-                {districts.map(d => (
-                  <ListItem key={d} text={d} onClick={() => setSelectedDistrict(d)} />
-                ))}
-              </>
-            )}
+              {/* Empty State */}
+              {!isLoading && results.length === 0 && query && !error && (
+                <div className="text-center py-12">
+                  <div className="text-6xl mb-4">🔍</div>
+                  <p className="text-gray-500 dark:text-gray-400 font-medium">No results found</p>
+                  <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">Try a different search term</p>
+                </div>
+              )}
 
-            {selectedDistrict && (
-              <>
-                <button
-                  onClick={() => setSelectedDistrict(null)}
-                  className="mb-4 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded hover:bg-gray-300 dark:hover:bg-gray-600 transition-all duration-200 transform active:scale-95 font-medium"
-                >
-                  ← Back to Districts
-                </button>
-                <h2 className="text-xl font-bold mb-2 text-gray-900 dark:text-gray-100">{selectedDistrict}</h2>
-                {results.map((post, index) => (
-                  <div
-                    key={post.id}
-                    onClick={() => setSelectedPost(post)}
-                    className={`p-4 mb-2 border rounded-lg cursor-pointer transition-all duration-300 transform hover:scale-[1.02] hover:shadow-lg ${
-                      selectedPost?.id === post.id
-                        ? 'border-blue-600 bg-blue-100 dark:bg-blue-900/30 shadow-md text-gray-900 dark:text-gray-100'
-                        : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 hover:bg-blue-50 dark:hover:bg-gray-700'
-                    }`}
-                    style={{ 
-                      animationName: 'fadeInUp',
-                      animationDuration: '0.3s',
-                      animationTimingFunction: 'ease',
-                      animationDelay: `${index * 50}ms`,
-                      animationFillMode: 'forwards',
-                      opacity: 0
-                    }}
-                  >
-                    <h3 className="font-semibold text-gray-900 dark:text-gray-100">{post.office_name}</h3>
-                    <p className="text-sm text-gray-700 dark:text-gray-300">Pincode: {post.pincode}</p>
+              {/* Results */}
+              {!isLoading && results.length > 0 && (
+                <div>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                    Found {results.length} result{results.length !== 1 ? 's' : ''}
+                  </p>
+                  {results.map((post) => (
+                    <PostCard
+                      key={post.id}
+                      post={post}
+                      isSelected={selectedPost?.id === post.id}
+                      onClick={() => setSelectedPost(post)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Browse View */}
+          {view === 'browse' && (
+            <div>
+              {isLoading && <SkeletonLoader />}
+
+              {error && !isLoading && (
+                <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-center">
+                  <p className="text-red-900 dark:text-red-300 font-medium">❌ {error}</p>
+                </div>
+              )}
+
+              {!selectedState && !isLoading && (
+                <div>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-3 font-medium">Select a state:</p>
+                  <div className="space-y-2">
+                    {states.map(s => (
+                      <ListItem key={s} text={s} onClick={() => setSelectedState(s)} />
+                    ))}
                   </div>
-                ))}
-              </>
-            )}
-          </div>
-        )}
+                </div>
+              )}
+
+              {selectedState && !selectedDistrict && !isLoading && (
+                <>
+                  <button
+                    onClick={() => setSelectedState(null)}
+                    className="mb-4 px-4 py-2.5 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-all duration-200 font-medium inline-flex items-center gap-2"
+                  >
+                    <span>←</span> Back to States
+                  </button>
+                  <h2 className="text-lg font-bold mb-3 text-gray-900 dark:text-gray-100">{selectedState}</h2>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-3 font-medium">Select a district:</p>
+                  <div className="space-y-2">
+                    {districts.map(d => (
+                      <ListItem key={d} text={d} onClick={() => setSelectedDistrict(d)} />
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {selectedDistrict && !isLoading && (
+                <>
+                  <button
+                    onClick={() => setSelectedDistrict(null)}
+                    className="mb-4 px-4 py-2.5 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-all duration-200 font-medium inline-flex items-center gap-2"
+                  >
+                    <span>←</span> Back to Districts
+                  </button>
+                  <h2 className="text-lg font-bold mb-3 text-gray-900 dark:text-gray-100">{selectedDistrict}</h2>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                    Found {results.length} post office{results.length !== 1 ? 's' : ''}
+                  </p>
+                  {results.map((post) => (
+                    <PostCard
+                      key={post.id}
+                      post={post}
+                      isSelected={selectedPost?.id === post.id}
+                      onClick={() => setSelectedPost(post)}
+                    />
+                  ))}
+                </>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Right Panel - Map */}
-      <div className="md:w-2/3 w-full">
+      <div className="flex-1 relative">
         <MapComponent
           searchResults={results}
           selectedPost={selectedPost}
