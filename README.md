@@ -204,52 +204,6 @@ The system uses a unique hybrid scoring mechanism:
 
 This ensures results are both semantically relevant and geographically convenient.
 
-### Data Flow
-
-```
-User Query → Frontend (debounced 500ms)
-    ↓
-Hybrid Search API (/posts/hybrid-search/)
-    ↓
-SearchService.find_similar() → Top 100 semantically similar IDs
-    ↓
-crud.get_posts_by_ids() → Fetch full records from PostgreSQL
-    ↓
-Hybrid Scoring → Combine text rank × geo distance
-    ↓
-Top 15 Results → Frontend → Map Markers + List
-```
-
-## 📁 Project Structure
-
-```
-dpo-system/
-├── backend/
-│   ├── app/
-│   │   ├── main.py              # FastAPI app & endpoints
-│   │   ├── database.py          # Database connection
-│   │   ├── db_models.py         # SQLAlchemy models
-│   │   ├── schemas.py           # Pydantic schemas
-│   │   ├── crud.py              # Database operations
-│   │   └── ai_search.py         # SearchService (AI)
-│   ├── scripts/
-│   │   ├── load_data.py         # Data loading script
-│   │   └── dpo_data.csv         # Source data
-│   ├── generate_embeddings.py  # Generate AI embeddings
-│   └── requirements.txt
-├── frontend/
-│   ├── src/
-│   │   ├── app/
-│   │   │   ├── page.js          # Main application
-│   │   │   └── layout.js
-│   │   └── components/
-│   │       └── MapComponent.js  # Interactive map
-│   ├── package.json
-│   └── next.config.mjs
-├── WARP.md                      # AI agent documentation
-├── README.md
-└── .gitignore
-```
 
 ## 🎯 Use Cases
 
