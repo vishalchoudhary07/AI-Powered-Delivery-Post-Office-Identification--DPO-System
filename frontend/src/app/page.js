@@ -254,19 +254,21 @@ export default function Home() {
         </div>
 
         {post.distance_km && userLocation && (
-          <a
-            href={`https://www.google.com/maps/dir/?api=1&origin=${userLocation.lat},${userLocation.lon}&destination=${post.latitude},${post.longitude}&travelmode=driving`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-sm text-blue-600 dark:text-blue-400 font-medium hover:text-blue-700 dark:hover:text-blue-300 hover:underline transition-colors mt-1"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <span>🗺️</span>
-            <span>{post.distance_km.toFixed(2)} km away</span>
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-            </svg>
-          </a>
+                  <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+            <span className="text-sm text-gray-600 dark:text-gray-400">
+              📍 {post.distance_km.toFixed(2)} km away
+            </span>
+            <a
+              href={`https://www.google.com/maps/dir/?api=1&origin=${userLocation.lat},${userLocation.lon}&destination=${post.latitude},${post.longitude}&travelmode=driving`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors inline-flex items-center gap-1.5 shadow-sm"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <span>🧭</span>
+              Start Navigation
+            </a>
+          </div>
         )}
       </div>
     </div>

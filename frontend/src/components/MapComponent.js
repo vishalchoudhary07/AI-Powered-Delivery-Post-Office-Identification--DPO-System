@@ -99,7 +99,7 @@ export default function MapComponent({ searchResults, selectedPost }) {
 
       wrapper.appendChild(el);
 
-      // ✅ FIXED: Changed post.name to post.office_name
+      // Updated popup with different info than card
       const stateName = post.state_name || post.state || '';
       
       const popup = new maplibregl.Popup({ 
@@ -116,15 +116,16 @@ export default function MapComponent({ searchResults, selectedPost }) {
               <span class="popup-value">${post.pincode}</span>
             </p>
             <p class="popup-detail">
-              <strong class="popup-label">🏛️ District:</strong> 
-              <span class="popup-value">${post.district}</span>
+              <strong class="popup-label">📍 Location:</strong> 
+              <span class="popup-value">${post.district}, ${stateName}</span>
             </p>
-            ${stateName ? `<p class="popup-detail">
-              <strong class="popup-label">🗺️ State:</strong> 
-              <span class="popup-value">${stateName}</span>
+            ${post.office_type ? `<p class="popup-detail">
+              <strong class="popup-label">🏢 Type:</strong> 
+              <span class="popup-value">${post.office_type}</span>
             </p>` : ''}
-            ${post.distance_km ? `<p class="popup-distance">
-              📍 ${post.distance_km.toFixed(2)} km away
+            ${post.distance_km ? `<p class="popup-detail">
+              <strong class="popup-label">🗺️ Distance:</strong> 
+              <span class="popup-value">${post.distance_km.toFixed(2)} km from you</span>
             </p>` : ''}
           </div>
         </div>`
@@ -187,41 +188,21 @@ export default function MapComponent({ searchResults, selectedPost }) {
   }, [selectedPost]);
 
   return (
-    <div className="relative w-full h-full">
-      <div ref={mapContainer} className="w-full h-full" />
-      
-      <div className="absolute top-4 left-4 bg-white dark:bg-gray-800 rounded-lg shadow-lg p-2 flex gap-2 z-10 border border-gray-200 dark:border-gray-700">
-        <button
-          onClick={() => setCurrentStyle('streets')}
-          className={`px-4 py-2 rounded font-medium transition-all duration-200 transform active:scale-95 ${
-            currentStyle === 'streets'
-              ? 'bg-blue-600 text-white shadow-md'
-              : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600'
-          }`}
-        >
-          🗺️ Streets
-        </button>
-        <button
-          onClick={() => setCurrentStyle('satellite')}
-          className={`px-4 py-2 rounded font-medium transition-all duration-200 transform active:scale-95 ${
-            currentStyle === 'satellite'
-              ? 'bg-blue-600 text-white shadow-md'
-              : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600'
-          }`}
-        >
-          🛰️ Satellite
-        </button>
-        <button
-          onClick={() => setCurrentStyle('topo')}
-          className={`px-4 py-2 rounded font-medium transition-all duration-200 transform active:scale-95 ${
-            currentStyle === 'topo'
-              ? 'bg-blue-600 text-white shadow-md'
-              : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600'
-          }`}
-        >
-          ⛰️ Topo
-        </button>
-      </div>
+  <div className="relative w-full h-full">
+    <div ref={mapContainer} className="w-full h-full" />
+    
+    {/* Dropdown Menu for Map Styles - Top Left to avoid zoom controls */}
+    <div className="absolute top-4 left-4 z-10">
+      <select
+        value={currentStyle}
+        onChange={(e) => setCurrentStyle(e.target.value)}
+        className="px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg text-gray-900 dark:text-gray-100 font-medium cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+      >
+        <option value="streets">🗺️ Streets</option>
+        <option value="satellite">🛰️ Satellite</option>
+        <option value="topo">⛰️ Topographic</option>
+      </select>
     </div>
-  );
+  </div>
+);
 }
