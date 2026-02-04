@@ -103,8 +103,8 @@ async def get_post_ids_within_radius(db: AsyncSession, lat: float, lon: float, r
 
 async def fulltext_search_posts(db: AsyncSession, query: str, limit: int = 20):
     """
-    Performs prefix search on office name only.
-    Results will have office names starting with the search term.
+    Performs search on office name (prefix matching) and pincode (exact or prefix matching).
+    Supports searching by name, pincode, district, state, etc.
     """
     from sqlalchemy import func, or_
     
@@ -113,13 +113,89 @@ async def fulltext_search_posts(db: AsyncSession, query: str, limit: int = 20):
     if not search_term:
         return []
     
-    # Search ONLY in office_name with prefix matching
+    # Create pattern for prefix matching
     pattern = f"{search_term}%"
+    
+    # Build search conditions for multiple fields
+    search_conditions = [
+        db_models.DeliveryPost.office_name.ilike(pattern),
+        db_models.DeliveryPost.pincode.ilike(pattern),
+        db_models.DeliveryPost.district.ilike(pattern),
+        db_models.DeliveryPost.state_name.ilike(pattern),
+        db_models.DeliveryPost.division_name.ilike(pattern),
+        db_models.DeliveryPost.region_name.ilike(pattern),
+        db_models.DeliveryPost.circle_name.ilike(pattern),
+    ]
     
     result = await db.execute(
         select(db_models.DeliveryPost)
+        .where(or_(*search_conditions))
+        .limit(limit)
+    )
+    
+    posts = result.scalars().all()
+    
+    return [
+        {
+            "id": post.id,
+            "office_name": post.office_name,
+            "pincode": post.pincode,
+            "office_type": post.office_type,
+            "delivery_status": post.delivery_status,
+            "division_name": post.division_name,
+            "region_name": post.region_name,
+            "circle_name": post.circle_name,
+            "district": post.district,
+            "state_name": post.state_name,
+            "latitude": post.latitude,
+            "longitude": post.longitude
+        }
+        for post in posts
+    ]
+
+
+async def get_post_by_pincode(db: AsyncSession, pincode: str):
+    """
+    Get a single post office by exact pincode match.
+    Returns the first match if multiple offices share the same pincode.
+    """
+    result = await db.execute(
+        select(db_models.DeliveryPost)
+        .where(db_models.DeliveryPost.pincode == pincode)
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_posts_within_radius(
+    db: AsyncSession, 
+    lat: float, 
+    lon: float, 
+    radius_km: float, 
+    limit: int = 100
+):
+    """
+    Get all post offices within a specified radius from a given location.
+    Returns posts sorted by distance (nearest first).
+    """
+    radius_meters = radius_km * 1000
+    user_location_geography = f'SRID=4326;POINT({lon} {lat})'
+    
+    # Use ST_Distance to calculate and sort by distance
+    result = await db.execute(
+        select(db_models.DeliveryPost)
         .where(
-            db_models.DeliveryPost.office_name.ilike(pattern)
+            ST_DWithin(
+                db_models.DeliveryPost.location,
+                user_location_geography,
+                radius_meters
+            )
+        )
+        .order_by(
+            func.ST_Distance(
+                db_models.DeliveryPost.location,
+                user_location_geography
+            )
         )
         .limit(limit)
     )
@@ -145,5 +221,38 @@ async def fulltext_search_posts(db: AsyncSession, query: str, limit: int = 20):
     ]
 
 
-
+async def get_database_stats(db: AsyncSession):
+    """
+    Get database statistics including total count of posts and unique locations.
+    """
+    # Get total count
+    total_result = await db.execute(
+        select(func.count(db_models.DeliveryPost.id))
+    )
+    total_posts = total_result.scalar()
+    
+    # Get count of unique states
+    states_result = await db.execute(
+        select(func.count(func.distinct(db_models.DeliveryPost.state_name)))
+    )
+    total_states = states_result.scalar()
+    
+    # Get count of unique districts
+    districts_result = await db.execute(
+        select(func.count(func.distinct(db_models.DeliveryPost.district)))
+    )
+    total_districts = districts_result.scalar()
+    
+    # Get count of unique pincodes
+    pincodes_result = await db.execute(
+        select(func.count(func.distinct(db_models.DeliveryPost.pincode)))
+    )
+    total_pincodes = pincodes_result.scalar()
+    
+    return {
+        "total_posts": total_posts,
+        "total_states": total_states,
+        "total_districts": total_districts,
+        "total_pincodes": total_pincodes
+    }
 

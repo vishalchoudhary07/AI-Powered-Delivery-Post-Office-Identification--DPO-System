@@ -296,7 +296,7 @@ export default function Home() {
               </div>
               <div>
                 <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">
-                  Post Office Finder
+                  DPO Finder
                 </h1>
                 <p className="text-xs text-gray-500 dark:text-gray-400">Find nearby delivery points</p>
               </div>
