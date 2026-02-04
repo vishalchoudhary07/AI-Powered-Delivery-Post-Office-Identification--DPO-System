@@ -106,7 +106,7 @@ async def fulltext_search_posts(db: AsyncSession, query: str, limit: int = 20):
     Performs search on office name (prefix matching) and pincode (exact or prefix matching).
     Supports searching by name, pincode, district, state, etc.
     """
-    from sqlalchemy import func, or_
+    from sqlalchemy import func, or_, cast, String
     
     search_term = query.strip()
     
@@ -117,9 +117,10 @@ async def fulltext_search_posts(db: AsyncSession, query: str, limit: int = 20):
     pattern = f"{search_term}%"
     
     # Build search conditions for multiple fields
+    # Note: pincode is INTEGER, so we need to cast it to text for pattern matching
     search_conditions = [
         db_models.DeliveryPost.office_name.ilike(pattern),
-        db_models.DeliveryPost.pincode.ilike(pattern),
+        cast(db_models.DeliveryPost.pincode, String).ilike(pattern),  # Cast integer to string
         db_models.DeliveryPost.district.ilike(pattern),
         db_models.DeliveryPost.state_name.ilike(pattern),
         db_models.DeliveryPost.division_name.ilike(pattern),
